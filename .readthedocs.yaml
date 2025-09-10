@@ -1,0 +1,17 @@
+version: "1"
+
+build:
+  os: "ubuntu-24.04"
+  tools:
+    python: "latest"
+
+python:
+  install:
+    - requirements: requirements.txt
+    - method: pip
+      path: .
+      extra_requirements:
+        - sphinx
+
+sphinx:
+  configuration: docs/source/conf.py
