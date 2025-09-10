@@ -8,6 +8,9 @@ Hamiltonians are based on pionless effective field theory and consist
 of the kinetic energy, an on-site (SU4 symmetric) two-body contact,
 and an on-site three-body contact.
 
+[![Documentation Status](https://app.readthedocs.org/projects/nulattice/badge/)](https://nulattice.readthedocs.io/)
+[![Zenodo](https://zenodo.org/badge/DOI/10.5281/zenodo.17094173.svg)](https://doi.org/10.5281/zenodo.17094173)
+
 ## Setup
 
 To set up the repository to run the code, install the required packages in `requirements.txt`.
