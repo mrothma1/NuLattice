@@ -10,6 +10,7 @@ and an on-site three-body contact.
 
 [![Documentation Status](https://app.readthedocs.org/projects/nulattice/badge/)](https://nulattice.readthedocs.io/)
 [![Zenodo](https://zenodo.org/badge/DOI/10.5281/zenodo.17094173.svg)](https://doi.org/10.5281/zenodo.17094173)
+[![arXiv](https://img.shields.io/badge/arXiv-2509.08771-b31b1b.svg)](https://arxiv.org/abs/2509.08771)
 
 ## Setup
 
@@ -39,4 +40,24 @@ create a new branch with your feature,
 and once it is complete open a pull request to contribute to the main project.
 Consistent contributors will be given access to the organization
 to easily contribute to the project.
+
+## Citing
+
+To cite `NuLattice` in your research, please reference:
+
+M. Rothman, B. Johnson-Toth, G. Hagen, M. Heinz, T. Papenbrock, `NuLattice`: Ab initio computations of atomic nuclei on lattices, [arXiv:2509.08771](https://arxiv.org/abs/2509.08771)
+
+For BibTex users, we provide the BibTex entry:
+
+```
+@misc{Rothman2025NuLattice,
+      title={NuLattice: Ab initio computations of atomic nuclei on lattices}, 
+      author={M. Rothman and B. Johnson-Toth and G. Hagen and M. Heinz and T. Papenbrock},
+      year={2025},
+      eprint={2509.08771},
+      archivePrefix={arXiv},
+      primaryClass={nucl-th},
+      url={https://arxiv.org/abs/2509.08771}, 
+}
+```
 
