@@ -57,7 +57,8 @@ For BibTex users, we provide the BibTex entry:
       eprint={2509.08771},
       archivePrefix={arXiv},
       primaryClass={nucl-th},
-      url={https://arxiv.org/abs/2509.08771}, 
+      url={https://arxiv.org/abs/2509.08771},
+      doi={10.48550/arXiv.2509.08771}
 }
 ```
 
