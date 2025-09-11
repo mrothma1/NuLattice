@@ -51,7 +51,7 @@ For BibTex users, we provide the BibTex entry:
 
 ```
 @misc{Rothman2025NuLattice,
-      title={NuLattice: Ab initio computations of atomic nuclei on lattices}, 
+      title={{N}u{L}attice: Ab initio computations of atomic nuclei on lattices}, 
       author={M. Rothman and B. Johnson-Toth and G. Hagen and M. Heinz and T. Papenbrock},
       year={2025},
       eprint={2509.08771},
