@@ -75,7 +75,8 @@ def onePionEx(myL, bpi, spin, a_lat):
     :param a_lat: lattice spacing in fm
     :type a_lat: float
     """
-    coupling = -(consts.g_A / (2 * a_lat * consts.f_pi)) ** 2
+    coupling = (-(consts.g_A / (2 * a_lat * consts.f_pi)) ** 2)
+    mass = consts.m_pi * a_lat
     cg = np.zeros([2, 2, 2, 4])
     val = 1 / np.sqrt(2)
     cg[0, 1, 0, 0] = val
@@ -116,10 +117,10 @@ def onePionEx(myL, bpi, spin, a_lat):
                 is2 = int(((nSpin - is1) % 4) / 2)
                 is1p = int(((nSpin - is1 - 2 * (is2)) % 8) / 4)
                 is2p = int((nSpin - is1 - 2 * (is2) - 4 * (is1p)) / 8)
-                potMom +=   (coupling * cg[is1, is2, spin, sz + spin] * cg[is1p, is2p, spin, szp + spin]
+                potMom = potMom + (coupling * cg[is1, is2, spin, sz + spin] * cg[is1p, is2p, spin, szp + spin]
                             *np.real(pauli[is1, is1p, 0] * qqx + pauli[is1, is1p, 1] * qqy + pauli[is1, is1p, 2] * qqz)
                             *np.real(pauli[is2, is2p, 0] * qqx + pauli[is2, is2p, 1] * qqy + pauli[is2, is2p, 2] * qqz)
-                            /(q2 + consts.m_pi **2) * np.exp(-bpi * (q2 + consts.m_pi ** 2))
+                            /(q2 + mass **2) * np.exp(-bpi * (q2 + mass ** 2))
                             )
             np.reshape(potMom, shape=[myL, myL, myL])
             ftPotMom = np.fft.ifftn(potMom)
@@ -302,7 +303,7 @@ def get_full_int(myL, bpi, c0, sL, sNL, a_lat, spin = 2, isospin = 2):
     """
     lattice = lat.get_lattice(myL)
     a = consts.hbarc / a_lat
-    kin = Tkin(lattice, myL, a_lat, spin, isospin)
+    kin = Tkin(lattice, myL, 1, spin, isospin)
     interMat = onePionEx(myL, bpi, 0, a) + smearedInteract(myL, c0, sL, sNL)
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, np.real(full_int)
