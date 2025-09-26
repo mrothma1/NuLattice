@@ -301,7 +301,8 @@ def get_full_int(myL, bpi, c0, sL, sNL, a_lat, spin = 2, isospin = 2):
     :type isospin:  int    
     """
     lattice = lat.get_lattice(myL)
+    a = consts.hbarc / a_lat
     kin = Tkin(lattice, myL, a_lat, spin, isospin)
-    interMat = onePionEx(myL, bpi, 0, a_lat) + smearedInteract(myL, c0, sL, sNL)
+    interMat = onePionEx(myL, bpi, 0, a) + smearedInteract(myL, c0, sL, sNL)
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, np.real(full_int)
