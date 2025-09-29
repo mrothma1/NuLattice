@@ -80,7 +80,7 @@ def onePionEx(myL, bpi, spin, a_lat):
     cg = np.zeros([2, 2, 2, 4])
     val = 1 / np.sqrt(2)
     cg[0, 1, 0, 0] = val
-    cg[0, 1, 0, 0] = -val
+    cg[1, 0, 0, 0] = -val
     cg[0,0,1,2] = 1.0
     cg[0,1,1,1] = val
     cg[1,0,1,1] = val
@@ -108,25 +108,32 @@ def onePionEx(myL, bpi, spin, a_lat):
     qqy = val * py
     qqz = val * pz
 
-    potOPE = [[0]*(2 * spin + 1)] * (2 * spin + 1)
+    potOPE = [[0 for _ in range(2 * spin + 1)] for _ in range(2 * spin + 1)]
     for sz in range(-spin, spin+1):
         for szp in range(-spin, spin+1):
-            potMom = np.zeros([1, myL**3])
+            potMom = (np.zeros([1, myL**3])).astype(complex)
             for nSpin in range(16):
                 is1 = int(nSpin % 2)
                 is2 = int(((nSpin - is1) % 4) / 2)
                 is1p = int(((nSpin - is1 - 2 * (is2)) % 8) / 4)
                 is2p = int((nSpin - is1 - 2 * (is2) - 4 * (is1p)) / 8)
-                potMom = potMom + (coupling * cg[is1, is2, spin, sz + spin] * cg[is1p, is2p, spin, szp + spin]
-                            *np.real(pauli[is1, is1p, 0] * qqx + pauli[is1, is1p, 1] * qqy + pauli[is1, is1p, 2] * qqz)
-                            *np.real(pauli[is2, is2p, 0] * qqx + pauli[is2, is2p, 1] * qqy + pauli[is2, is2p, 2] * qqz)
-                            /(q2 + mass **2) * np.exp(-bpi * (q2 + mass ** 2))
+                potMom +=   (coupling 
+                            *cg[is1, is2, spin, sz + spin] 
+                            *cg[is1p, is2p, spin, szp + spin]
+                            *(pauli[is1, is1p, 0] * qqx 
+                                     + pauli[is1, is1p, 1] * qqy 
+                                     + pauli[is1, is1p, 2] * qqz)
+                            *(pauli[is2, is2p, 0] * qqx 
+                                     + pauli[is2, is2p, 1] * qqy 
+                                     + pauli[is2, is2p, 2] * qqz)
+                            /(q2 + mass ** 2) * np.exp(-bpi * (q2 + mass ** 2))
                             )
-            np.reshape(potMom, shape=[myL, myL, myL])
-            ftPotMom = np.fft.ifftn(potMom)
-            np.reshape(ftPotMom, shape = [myL**3, 1])
-            potOPE[sz + spin][szp + spin] = ftPotMom 
-    return np.diag(potOPE[0][0])
+            potMom_reshaped = np.reshape(potMom, (myL, myL, myL))
+            ftPotMom = np.fft.ifftn(potMom_reshaped)
+            ftPotMom_reshaped = np.reshape(ftPotMom, (myL**3))
+            potOPE[sz + spin][szp + spin] = ftPotMom_reshaped
+    
+    return (np.diag((potOPE[0][0])))
 
 def interact(interMat, lattice, myL, spin=2, isospin=2):
     """
@@ -302,8 +309,8 @@ def get_full_int(myL, bpi, c0, sL, sNL, a_lat, spin = 2, isospin = 2):
     :type isospin:  int    
     """
     lattice = lat.get_lattice(myL)
-    a = consts.hbarc / a_lat
-    kin = Tkin(lattice, myL, 1, spin, isospin)
-    interMat = onePionEx(myL, bpi, 0, a) + smearedInteract(myL, c0, sL, sNL)
+    a =  a_lat / consts.hbarc
+    kin = Tkin(lattice, myL, lat.phys_unit(a_lat) / a, spin, isospin)
+    interMat = (onePionEx(myL, bpi, 0, a) + smearedInteract(myL, c0, sL, sNL))
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, np.real(full_int)
