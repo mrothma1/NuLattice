@@ -582,7 +582,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     
     if verbose:
         print(f'Step {0}: {prevEnergy}')
-
+    min_err =np.sqrt(eps)
     #iterate
     for i in range(maxSteps):
         oldT1 = deepcopy(t1)
@@ -605,17 +605,24 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
         if verbose:
             print(f'Step {i+1}: {energy}', "difference =", abs(energy - prevEnergy) / abs(energy))
 
-        if (energy == 0 and prevEnergy == 0) or abs(energy - prevEnergy) / abs(energy) < eps:
+        # if (energy == 0 and prevEnergy == 0) or abs(energy - prevEnergy) / abs(energy) < eps:
+        #     if verbose:
+        #         print(f'Energy found in {i+1} iterations')
+        #     return energy, t1, t2
+        
+        error_t1 = (t1 - oldT1).ravel()
+        error_t2 = (t2 - oldT2).ravel()
+        error = np.concatenate((error_t1, error_t2))
+        rel_err = error / (np.concatenate((t1.ravel(), t2.ravel())) + 1e-15)
+        if np.max(rel_err) < min_err:
             if verbose:
                 print(f'Energy found in {i+1} iterations')
             return energy, t1, t2
-        
-        diis_vals_t1.append(deepcopy(t1))
-        diis_vals_t2.append(deepcopy(t2))
 
-        error_t1 = (t1 - oldT1).ravel()
-        error_t2 = (t2 - oldT2).ravel()
-        diis_errors.append(np.concatenate((error_t1, error_t2)))
+        if max_diis > 0:
+            diis_errors.append(error)
+            diis_vals_t1.append(deepcopy(t1))
+            diis_vals_t2.append(deepcopy(t2))
         if max_diis > 0 and len(diis_errors) == max_diis:
             diis_size = len(diis_vals_t1)
             del diis_vals_t1[0]
