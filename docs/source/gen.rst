@@ -6,4 +6,5 @@ General Lattice
     
     lattice
     constants
+    smearedInteraction
     references

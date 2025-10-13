@@ -1,8 +1,13 @@
+"""
+Module that provides functions that generate a smeared interaction
+"""
+
 import numpy as np
 from opt_einsum import contract
 import copy
 import NuLattice.lattice as lat
 import NuLattice.constants as consts
+import math
 
 def smearMat(myL, sL, sNL):
     """
@@ -60,7 +65,7 @@ def smearedInteract(myL, c0, sL, sNL):
 
     fSL = np.diag(contract('ij, jk, k -> i', local, local, locOrigin))
     nonLocSq = contract('ij, jk -> ik', nonLocal, nonLocal)
-    return c0 / 2 * contract('ij, jk, kl -> il', nonLocSq, fSL, nonLocSq)
+    return c0 * contract('ij, jk, kl -> il', nonLocSq, fSL, nonLocSq)
 
 def onePionEx(myL, bpi, spin, a_lat):
     """
@@ -70,9 +75,9 @@ def onePionEx(myL, bpi, spin, a_lat):
     :type myL:  int
     :param bpi: parameter to remove short-distance lattice artifacts
     :type bpi: float
-    :param spin: Not sure why this is specified tbh
+    :param spin: Not sure why this is specified tbh, only spin 0 is used in the program
     :type spin: int
-    :param a_lat: lattice spacing in fm
+    :param a_lat: lattice spacing divided by hbar c
     :type a_lat: float
     """
     coupling = (-(consts.g_A / (2 * a_lat * consts.f_pi)) ** 2)
@@ -287,7 +292,7 @@ def Tkin(lattice, myL, a_lat, spin=2, isospin=2):
                 mat.append([indx2, indx1, val2]) #adds a hop-to-the left matrix element
     return mat
 
-def get_full_int(myL, bpi, c0, sL, sNL, a_lat, spin = 2, isospin = 2):
+def get_full_int(myL, bpi, c0, sL, sNL, a, at, nk = 2, spin = 2, isospin = 2):
     """
     Takes the parameters needed for the smeared interaction, and returns the one and two body matrix elements
 
@@ -309,8 +314,50 @@ def get_full_int(myL, bpi, c0, sL, sNL, a_lat, spin = 2, isospin = 2):
     :type isospin:  int    
     """
     lattice = lat.get_lattice(myL)
-    a =  a_lat / consts.hbarc
-    kin = Tkin(lattice, myL, lat.phys_unit(a_lat) / a, spin, isospin)
+    kin = tKin2(myL, nk, a, at)
     interMat = (onePionEx(myL, bpi, 0, a) + smearedInteract(myL, c0, sL, sNL))
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, np.real(full_int)
+
+def tKin2(myL, Nk, a, at):
+    h = -1.0 / 2.0 / (consts.mass * a)
+
+    KK = np.zeros([myL**3, myL**3])
+    cf0 = 0.0
+
+    r = np.arange(myL**3)
+    nx = np.mod(r, myL)
+    ny = np.mod((r - nx) // myL, myL)
+    nz = (r - nx - ny * myL) // (myL**2)
+
+    for k in range(1, Nk + 1):
+        cf = ((-1)**(k + 1) * 2.0 *
+              (math.factorial(Nk) / math.factorial(Nk - k)) /
+              (math.factorial(Nk + k) /math.factorial(Nk)) / k**2 * h)
+        cf0 -= 2 * cf
+
+        rxp = np.mod(nx + k, myL) + ny * myL + nz * myL**2
+        rxm = np.mod(nx - k, myL) + ny * myL + nz * myL**2
+        ryp = nx + np.mod(ny + k, myL) * myL + nz * myL**2
+        rym = nx + np.mod(ny - k, myL) * myL + nz * myL**2
+        rzp = nx + ny * myL + np.mod(nz + k, myL) * myL**2
+        rzm = nx + ny * myL + np.mod(nz - k, myL) * myL**2
+
+        KK[r, rxp] += cf
+        KK[r, rxm] += cf
+        KK[r, ryp] += cf
+        KK[r, rym] += cf
+        KK[r, rzp] += cf
+        KK[r, rzm] += cf
+
+    cf0 *= 3
+    KK[r, r] += cf0
+
+    I = np.identity(myL**3)
+    KK = (I - at * KK) @ (I - at * KK)
+    ret = []
+    for i in range(len(KK)):
+        for j in range(len(KK[i])):
+            ret.append([i, j, KK[i][j]])
+    return ret
+
