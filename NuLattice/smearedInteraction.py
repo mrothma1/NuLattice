@@ -203,7 +203,7 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                                             matele.append([indx1, indx2, indx3, indx4, interMat[pos1, pos2]])
     return matele
 
-def Tkin(lattice, myL, a_lat, spin=2, isospin=2):
+def tKin(lattice, myL, a_lat, spin=2, isospin=2):
     """
     computes 1-body kinetic energy matrix elements. Really: the negative dimensionless laplacian 
 
@@ -314,13 +314,24 @@ def get_full_int(myL, bpi, c0, sL, sNL, a, at, nk = 2, spin = 2, isospin = 2):
     :type isospin:  int    
     """
     lattice = lat.get_lattice(myL)
-    kin = tKin2(myL, nk, a, at)
-    interMat = (onePionEx(myL, bpi, 0, a) + smearedInteract(myL, c0, sL, sNL))
+    a_lat = consts.hbarc * a
+    kin = tKin(lattice, myL, lat.phys_unit(a_lat))
+    kinTest  = np.zeros([myL ** 3, myL ** 3])
+    for i in kin:
+        ind1, sz1, tz1 = indConv(i[0], myL)
+        ind2, sz2, tz2 = indConv(i[1], myL)
+        if sz1 + tz1 + sz2 + tz2 == 0:
+            kinTest[ind1, ind2] += i[2] 
+
+    trMat = tKin2(myL, nk, a, at)
+    trMat -= at * np.real((onePionEx(myL, bpi, 0, a)) + (smearedInteract(myL, c0, sL, sNL)))
+    interMat = -np.log(trMat) / at / a
+    interMat -= kinTest
     full_int = interact(interMat, lattice, myL, spin, isospin)
-    return kin, np.real(full_int)
+    return kin, full_int, trMat
 
 def tKin2(myL, Nk, a, at):
-    h = -1.0 / 2.0 / (consts.mass * a)
+    h = -1.0 / 2.0 / (consts.mass*a)
 
     KK = np.zeros([myL**3, myL**3])
     cf0 = 0.0
@@ -355,9 +366,13 @@ def tKin2(myL, Nk, a, at):
 
     I = np.identity(myL**3)
     KK = (I - at * KK) @ (I - at * KK)
-    ret = []
-    for i in range(len(KK)):
-        for j in range(len(KK[i])):
-            ret.append([i, j, KK[i][j]])
-    return ret
+    return KK
 
+def indConv(ind, myL):
+    sz = ind % 2
+    tz = ((ind - sz) // 2) % myL
+    indx = (ind - sz - 2 * tz) // 4
+    k = indx % myL
+    j = ((indx - k)// myL) % myL
+    i = ((indx - k) // myL - j) // myL
+    return i + j * myL + k * myL ** 2, sz, tz
