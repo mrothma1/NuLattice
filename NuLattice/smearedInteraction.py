@@ -160,6 +160,7 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
     :rtype:         list[(int, int, int, int, float)]
     """
     matele = []
+    ind_set = set([])
     for site1 in lattice:
         for tz1 in range(isospin):
             for sz1 in range(spin):
@@ -196,11 +197,18 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                                             stat4.append(tz4)
                                             stat4.append(sz4)
                                             indx4 = lat.state2index(stat4, myL=myL, spin=spin, isospin=isospin)
-                                            if indx4 <= indx3:
-                                                continue
+                                            factor = 1
                                             pos1 = site1[0] + site1[1]* myL + site1[2] * myL ** 2
                                             pos2 = site2[0] + site2[1]* myL + site2[2] * myL ** 2
-                                            matele.append([indx1, indx2, indx3, indx4, interMat[pos1, pos2]])
+                                            if indx4 <= indx3:
+                                                # indx3, indx4 = indx4, indx3
+                                                # pos1, pos2 = pos2, pos1
+                                                # factor = -1
+                                                continue
+                                                                                        
+                                            if (indx1, indx2, indx3, indx4) not in ind_set:
+                                                ind_set.add((indx1, indx2, indx3, indx4))
+                                                matele.append([indx1, indx2, indx3, indx4, factor * interMat[pos1, pos2]])  
     return matele
 
 def tKin(lattice, myL, unit=1, spin=2, isospin=2):
@@ -325,8 +333,8 @@ def get_full_int(myL, bpi, c0, sL, sNL, a, at, method=1, nk = 2, spin = 2, isosp
         kin = tKinMatToList(kinMat, myL, spin, isospin)
     id = np.identity(myL**3)
     trMat = (id - at * kinMat) @ (id - at * kinMat) - at * np.real((onePionEx(myL, bpi, 0, a)) + (smearedInteract(myL, c0, sL, sNL)))
-    interMat = trMat / at
-    interMat -= kinMat
+    # interMat = trMat / at
+    interMat = trMat - at * kinMat
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, full_int, trMat
 
