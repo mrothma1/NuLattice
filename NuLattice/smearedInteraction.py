@@ -170,8 +170,8 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                 for site2 in lattice:
                     for tz2 in range(isospin):
                         for sz2 in range(spin):
-                            if tz1 == tz2 and sz1 == sz2: #not asymetric under exchange
-                                continue
+                            # if tz1 == tz2 and sz1 == sz2: #not asymetric under exchange
+                            #     continue
                             stat2 = copy.deepcopy(site2)
                             stat2.append(tz2)
                             stat2.append(sz2)
@@ -185,13 +185,13 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                                     stat3.append(sz3)
                                     indx3 = lat.state2index(stat3, myL=myL, spin=spin, isospin=isospin)
                                     for tz4 in range(isospin):
-                                        if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
-                                            continue
+                                        # if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
+                                        #     continue
                                         for sz4 in range(spin):
-                                            if sz1+sz2 != sz3+sz4: #Sz is not conserved
-                                                continue
-                                            if tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
-                                                continue
+                                            # if sz1+sz2 != sz3+sz4: #Sz is not conserved
+                                            #     continue
+                                            # if tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
+                                            #     continue
                                             stat4 = copy.deepcopy(site1)
                                             stat4.append(tz4)
                                             stat4.append(sz4)
@@ -203,9 +203,9 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                                             matele.append([indx1, indx2, indx3, indx4, interMat[pos1, pos2]])
     return matele
 
-def tKin(lattice, myL, a_lat, spin=2, isospin=2):
+def tKin(lattice, myL, unit=1, spin=2, isospin=2):
     """
-    computes 1-body kinetic energy matrix elements. Really: the negative dimensionless laplacian 
+    computes 1-body kinetic energy matrix elements. Really: the negative laplacian 
 
     :param lattice: list of lattice sites returned by get_lattice
     :type lattice:  list[(int, int, int)]
@@ -215,18 +215,20 @@ def tKin(lattice, myL, a_lat, spin=2, isospin=2):
     :type spin:     int
     :param isospin: Optional; number of isospin degrees of freedom
     :type isospin:  int    
+    :param unit:    Optional; unit of the kinetic energy, can also give a general scale factor 
+                    to match the units of another calculation
+    :type unit:     float
     :return:    list of tuples [i, j, value] where i and j are indices in the single-particle 
                 basis, and value is the value of the matrix element Tij
     :rtype:     list[(int, int, float)]
     """
     mat = []
-    unit = lat.phys_unit(a_lat)
     for site in lattice:
         i = site[0]
         j = site[1]
         k = site[2]
         #diagonal element from each direction
-        val = 15.0 / 2.0 * unit
+        val = (15.0 / 2.0) * unit
         for tz in range(isospin):
             for sz in range(spin):
                 state1 = [i, j, k, tz, sz]
@@ -239,8 +241,8 @@ def tKin(lattice, myL, a_lat, spin=2, isospin=2):
         ry2 = lat.right(ry, myL=myL)
         rz = lat.right(k, myL=myL)
         rz2 = lat.right(rz, myL=myL)
-        val1 = -4.0 / 3.0 * unit
-        val2 = 1.0 / 12.0 * unit
+        val1 = -(4.0 / 3.0) * unit
+        val2 = (1.0 / 12.0) * unit
         for tz in range(isospin):
             for sz in range(spin):
                 #hop one in x
@@ -292,7 +294,7 @@ def tKin(lattice, myL, a_lat, spin=2, isospin=2):
                 mat.append([indx2, indx1, val2]) #adds a hop-to-the left matrix element
     return mat
 
-def get_full_int(myL, bpi, c0, sL, sNL, a, at, nk = 2, spin = 2, isospin = 2):
+def get_full_int(myL, bpi, c0, sL, sNL, a, at, method=1, nk = 2, spin = 2, isospin = 2):
     """
     Takes the parameters needed for the smeared interaction, and returns the one and two body matrix elements
 
@@ -314,23 +316,21 @@ def get_full_int(myL, bpi, c0, sL, sNL, a, at, nk = 2, spin = 2, isospin = 2):
     :type isospin:  int    
     """
     lattice = lat.get_lattice(myL)
-    a_lat = consts.hbarc * a
-    kin = tKin(lattice, myL, lat.phys_unit(a_lat))
-    kinTest  = np.zeros([myL ** 3, myL ** 3])
-    for i in kin:
-        ind1, sz1, tz1 = indConv(i[0], myL)
-        ind2, sz2, tz2 = indConv(i[1], myL)
-        if sz1 + tz1 + sz2 + tz2 == 0:
-            kinTest[ind1, ind2] += i[2] 
-
-    trMat = tKin2(myL, nk, a, at)
-    trMat -= at * np.real((onePionEx(myL, bpi, 0, a)) + (smearedInteract(myL, c0, sL, sNL)))
-    interMat = -np.log(trMat) / at / a
-    interMat -= kinTest
+    unit = lat.phys_unit(consts.hbarc * a)
+    if method == 1:
+        kin = tKin(lattice, myL, unit * a)    
+        kinMat = tKinListToMat(kin, myL, spin, isospin)
+    else:
+        kinMat = tKin2(myL, nk, a)
+        kin = tKinMatToList(kinMat, myL, spin, isospin)
+    id = np.identity(myL**3)
+    trMat = (id - at * kinMat) @ (id - at * kinMat) - at * np.real((onePionEx(myL, bpi, 0, a)) + (smearedInteract(myL, c0, sL, sNL)))
+    interMat = trMat / at
+    interMat -= kinMat
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, full_int, trMat
 
-def tKin2(myL, Nk, a, at):
+def tKin2(myL, Nk, a):
     h = -1.0 / 2.0 / (consts.mass*a)
 
     KK = np.zeros([myL**3, myL**3])
@@ -363,15 +363,40 @@ def tKin2(myL, Nk, a, at):
 
     cf0 *= 3
     KK[r, r] += cf0
-
-    I = np.identity(myL**3)
-    KK = (I - at * KK) @ (I - at * KK)
     return KK
 
-def indConv(ind, myL):
-    sz = ind % 2
-    tz = ((ind - sz) // 2) % myL
-    indx = (ind - sz - 2 * tz) // 4
+def tKinListToMat(tLst, myL, spin=2, isospin=2):
+    ret = np.zeros([myL **3, myL ** 3])
+    for i in tLst:
+        ind1, sz1, tz1 = indConv(i[0], myL, spin, isospin)
+        ind2, sz2, tz2 = indConv(i[1], myL, spin, isospin)
+        if sz1 + tz1 + sz2 + tz2 == 0:
+            ret[ind1, ind2] += i[2] 
+    return ret
+
+def tKinMatToList(tMat, myL, spin = 2, isospin =2):
+    ret = []
+    for i in range(myL ** 3):
+        for j in range(myL ** 3):
+            val = tMat[i][j]
+            indx1 = i % myL
+            indy1 = ((i - indx1) // myL) % myL
+            indz1 = ((i - indx1) // myL - indy1) // myL
+            indx2 = j % myL
+            indy2 = ((j - indx2) // myL) % myL
+            indz2 = ((j - indx2) // myL - indy2) // myL
+            for iso1 in range(isospin):
+                for sp1 in range(spin):
+                    state1 = [indx1, indy1, indz1, iso1, sp1]
+                    indx1 = lat.state2index(state1, myL, spin, isospin)
+                    state2 = [indx2, indy2, indz2, iso1, sp1]
+                    indx2 = lat.state2index(state2, myL, spin, isospin)
+                    ret.append([indx1, indx2, val])
+    return ret
+def indConv(ind, myL, spin=2, isospin=2):
+    sz = ind % spin
+    tz = ((ind - sz) // spin) % isospin
+    indx = (ind - sz - spin * tz) // (spin * isospin)
     k = indx % myL
     j = ((indx - k)// myL) % myL
     i = ((indx - k) // myL - j) // myL
