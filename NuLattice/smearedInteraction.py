@@ -67,6 +67,52 @@ def smearedInteract(myL, c0, sL, sNL):
     nonLocSq = contract('ij, jk -> ik', nonLocal, nonLocal)
     return c0 * contract('ij, jk, kl -> il', nonLocSq, fSL, nonLocSq)
 
+def f_SL(site1, site2, myL, sL):
+    if site1 == site2:
+        return 1
+    i1, j1, k1 = site1
+    i2, j2, k2 = site2
+    dist1 = (i1 - i2) ** 2 + (j1 - j2) ** 2 + (k1 - k2) ** 2 
+    dist2 = (abs(i1 - myL) % myL - i2) ** 2 + (abs(j1- myL) % myL  - j2) ** 2 + (abs(k1- myL) % myL  - k2) ** 2 
+    dist3 = (abs(i2 - myL) % myL - i1) ** 2 + (abs(j2- myL) % myL  - j1) ** 2 + (abs(k2- myL) % myL  - k1) ** 2 
+    if dist1== 1 or dist2 == 1 or dist3 == 1:
+        return sL
+    return 0
+    
+
+def potMat(lattice, myL, sL, sNL, c0):
+    ret = np.zeros(myL ** 3, myL ** 3, myL ** 3, myL ** 3)
+    for site1 in lattice:
+        for site2 in lattice:
+            f_sl1 = f_SL(site1, site2, myL, sL)
+            if f_sl1 == 0:
+                continue
+            for site3 in lattice:
+                f_sl2 *= f_SL(site1, site3, myL, sL)
+                if f_sl2 == 0:
+                    continue
+                val = f_sl1 * f_sl2 * c0 / 2
+                pos1 = site2[0] + site2[1] * myL + site2[2] * myL ** 2
+                pos2 = site3[0] + site3[1] * myL + site3[2] * myL ** 2
+
+                rx1 = lat.right(site2[0],myL) + site2[1] * myL + site2[2] * myL ** 2
+                rx2 = lat.right(site3[0],myL) + site3[1] * myL + site3[2] * myL ** 2
+                ry1 = lat.right(site2[1],myL) * myL + site2[0] + site2[2] * myL ** 2
+                ry2 = lat.right(site3[1],myL) * myL + site3[0] + site3[2] * myL ** 2
+                rz1 = lat.right(site2[2],myL) * myL ** 2 + site2[0] + site2[1] * myL
+                rz2 = lat.right(site3[2],myL) * myL ** 2+ site3[0] + site3[1] * myL
+
+                lx1 = lat.left(site2[0],myL) + site2[1] * myL + site2[2] * myL ** 2
+                lx2 = lat.left(site3[0],myL) + site3[1] * myL + site3[2] * myL ** 2
+                ly1 = lat.left(site2[1],myL) * myL + site2[0] + site2[2] * myL ** 2
+                ly2 = lat.left(site3[1],myL) * myL + site3[0] + site3[2] * myL ** 2
+                lz1 = lat.left(site2[2],myL) * myL ** 2 + site2[0] + site2[1] * myL
+                lz2 = lat.left(site3[2],myL) * myL ** 2+ site3[0] + site3[1] * myL
+
+                ret[pos1, pos2, pos2, pos1] += val
+                
+    return ret
+
 def onePionEx(myL, bpi, spin, a_lat):
     """
     computes the potential for one pion exchange
@@ -201,9 +247,6 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                                             pos1 = site1[0] + site1[1]* myL + site1[2] * myL ** 2
                                             pos2 = site2[0] + site2[1]* myL + site2[2] * myL ** 2
                                             if indx4 <= indx3:
-                                                # indx3, indx4 = indx4, indx3
-                                                # pos1, pos2 = pos2, pos1
-                                                # factor = -1
                                                 continue
                                                                                         
                                             if (indx1, indx2, indx3, indx4) not in ind_set:
@@ -333,8 +376,7 @@ def get_full_int(myL, bpi, c0, sL, sNL, a, at, method=1, nk = 2, spin = 2, isosp
         kin = tKinMatToList(kinMat, myL, spin, isospin)
     id = np.identity(myL**3)
     trMat = (id - at * kinMat) @ (id - at * kinMat) - at * np.real((onePionEx(myL, bpi, 0, a)) + (smearedInteract(myL, c0, sL, sNL)))
-    # interMat = trMat / at
-    interMat = trMat - at * kinMat
+    interMat = trMat / at - kinMat
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, full_int, trMat
 
@@ -387,19 +429,21 @@ def tKinMatToList(tMat, myL, spin = 2, isospin =2):
     for i in range(myL ** 3):
         for j in range(myL ** 3):
             val = tMat[i][j]
+            if val == 0:
+                continue
             indx1 = i % myL
             indy1 = ((i - indx1) // myL) % myL
             indz1 = ((i - indx1) // myL - indy1) // myL
             indx2 = j % myL
             indy2 = ((j - indx2) // myL) % myL
             indz2 = ((j - indx2) // myL - indy2) // myL
-            for iso1 in range(isospin):
-                for sp1 in range(spin):
-                    state1 = [indx1, indy1, indz1, iso1, sp1]
-                    indx1 = lat.state2index(state1, myL, spin, isospin)
-                    state2 = [indx2, indy2, indz2, iso1, sp1]
-                    indx2 = lat.state2index(state2, myL, spin, isospin)
-                    ret.append([indx1, indx2, val])
+            for tz in range(isospin):
+                for sz in range(spin):
+                    state1 = [indx1, indy1, indz1, tz, sz]
+                    ind1 = lat.state2index(state1, myL, spin, isospin)
+                    state2 = [indx2, indy2, indz2, tz, sz]
+                    ind2 = lat.state2index(state2, myL, spin, isospin)
+                    ret.append([ind1, ind2, val])
     return ret
 def indConv(ind, myL, spin=2, isospin=2):
     sz = ind % spin
