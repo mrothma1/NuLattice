@@ -8,6 +8,7 @@ import copy
 import NuLattice.lattice as lat
 import NuLattice.constants as consts
 import math
+import itertools
 
 def smearMat(myL, sL, sNL):
     """
@@ -72,45 +73,104 @@ def f_SL(site1, site2, myL, sL):
         return 1
     i1, j1, k1 = site1
     i2, j2, k2 = site2
-    dist1 = (i1 - i2) ** 2 + (j1 - j2) ** 2 + (k1 - k2) ** 2 
-    dist2 = (abs(i1 - myL) % myL - i2) ** 2 + (abs(j1- myL) % myL  - j2) ** 2 + (abs(k1- myL) % myL  - k2) ** 2 
-    dist3 = (abs(i2 - myL) % myL - i1) ** 2 + (abs(j2- myL) % myL  - j1) ** 2 + (abs(k2- myL) % myL  - k1) ** 2 
-    if dist1== 1 or dist2 == 1 or dist3 == 1:
+    dist = ((i1 - i2 + myL // 2) % myL - myL // 2) ** 2 + ((j1 - j2 + myL // 2) % myL - myL // 2) ** 2 + ((k1 - k2 + myL // 2) % myL - myL // 2) ** 2
+    if dist== 1:
         return sL
     return 0
     
+def indConvXYZ(ind, myL):
+    x = ind % myL
+    y = ((ind - x) // myL) % myL
+    z = ((ind - x) // myL - y) // myL
+    return x, y, z
 
 def potMat(lattice, myL, sL, sNL, c0):
-    ret = np.zeros(myL ** 3, myL ** 3, myL ** 3, myL ** 3)
-    for site1 in lattice:
-        for site2 in lattice:
-            f_sl1 = f_SL(site1, site2, myL, sL)
-            if f_sl1 == 0:
+    ret = np.zeros([myL ** 3, myL ** 3, myL ** 3, myL ** 3])
+    for site1, site2, site3 in itertools.product(lattice, lattice, lattice):
+        f_sl1 = f_SL(site1, site2, myL, sL)
+        if f_sl1 == 0:
+            continue
+        f_sl2 = f_SL(site1, site3, myL, sL)
+        if f_sl2 == 0:
+            continue
+        val = f_sl1 * f_sl2 * c0 / 2
+        
+        pos1 = site2[0] + site2[1] * myL + site2[2] * myL ** 2                
+        pos2 = site3[0] + site3[1] * myL + site3[2] * myL ** 2
+        rx1 = lat.right(site2[0], myL) + site2[1] * myL + site2[2] * myL ** 2
+        rx2 = lat.right(site3[0], myL) + site3[1] * myL + site3[2] * myL ** 2
+        ry1 = lat.right(site2[1], myL) * myL + site2[0] + site2[2] * myL ** 2
+        ry2 = lat.right(site3[1], myL) * myL + site3[0] + site3[2] * myL ** 2
+        rz1 = lat.right(site2[2], myL) * myL ** 2 + site2[0] + site2[1] * myL
+        rz2 = lat.right(site3[2], myL) * myL ** 2 + site3[0] + site3[1] * myL
+        lx1 = lat.left(site2[0], myL)  + site2[1] * myL + site2[2] * myL ** 2
+        lx2 = lat.left(site3[0], myL)  + site3[1] * myL + site3[2] * myL ** 2
+        ly1 = lat.left(site2[1], myL)  * myL + site2[0] + site2[2] * myL ** 2
+        ly2 = lat.left(site3[1], myL)  * myL + site3[0] + site3[2] * myL ** 2
+        lz1 = lat.left(site2[2], myL)  * myL ** 2 + site2[0] + site2[1] * myL
+        lz2 = lat.left(site3[2], myL)  * myL ** 2 + site3[0] + site3[1] * myL
+
+        # asite2 = np.zeros(myL ** 3)
+        # asite3 = np.zeros(myL ** 3)
+        # asite2[pos1] = 1
+        # asite3[pos2] = 1
+        # asite2[rx1] = sNL
+        # asite2[ry1] = sNL
+        # asite2[rz1] = sNL
+        # asite3[rx2] = sNL
+        # asite3[ry2] = sNL
+        # asite3[rz2] = sNL
+        # asite2[lx1] = sNL
+        # asite2[ly1] = sNL
+        # asite2[lz1] = sNL
+        # asite3[lx2] = sNL
+        # asite3[ly2] = sNL
+        # asite3[lz2] = sNL
+        # ret += val * contract('i,j,k,l -> ijkl', asite2, asite3, asite2, asite3)
+
+        pos1_lst = [pos1, rx1, ry1, rz1, lx1, ly1, lz1]
+        pos2_lst = [pos2, rx2, ry2, rz2, lx2, ly2, lz2]
+        for i, j, k, l in itertools.product(pos1_lst, pos2_lst, pos1_lst, pos2_lst):
+            count = 0
+            if i != pos1:
+                count +=1
+            if j != pos2:
+                count += 1
+            if k != pos1:
+                count += 1
+            if l != pos2:
+                count += 1
+            ret[i,j,k,l] += val * (sNL ** count)
+    return ret
+
+def pot_mat_to_tbme(mat, myL, spin=2, isospin=2):
+    ret = []
+    nzInds = np.nonzero(mat)
+    nzVals = mat[nzInds]
+    nzLst = np.column_stack((*nzInds, nzVals))
+    for indx in nzLst:
+        i, j, k, l, val = indx
+        xi, yi, zi = indConvXYZ(i, myL)
+        xj, yj, zj = indConvXYZ(j, myL)
+        xk, yk, zk = indConvXYZ(k, myL)
+        xl, yl, zl = indConvXYZ(l, myL)
+
+        for sz1, tz1, sz2, tz2 in itertools.product(range(spin), range(isospin), range(spin), range(isospin)):
+            indi = lat.state2index([xi, yi, zi, sz1, tz1], myL)
+            indj = lat.state2index([xj, yj, zj, sz2, tz2], myL)
+            if indi <= indj or (tz1 == tz2 and sz1 == sz2):
                 continue
-            for site3 in lattice:
-                f_sl2 *= f_SL(site1, site3, myL, sL)
-                if f_sl2 == 0:
+            for sz3, tz3, sz4, tz4 in itertools.product(range(spin), range(isospin), range(spin), range(isospin)):
+                indk = lat.state2index([xk, yk, zk, sz3, tz3], myL)
+                indl = lat.state2index([xl, yl, zl, sz4, tz4], myL)
+                if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
                     continue
-                val = f_sl1 * f_sl2 * c0 / 2
-                pos1 = site2[0] + site2[1] * myL + site2[2] * myL ** 2
-                pos2 = site3[0] + site3[1] * myL + site3[2] * myL ** 2
-
-                rx1 = lat.right(site2[0],myL) + site2[1] * myL + site2[2] * myL ** 2
-                rx2 = lat.right(site3[0],myL) + site3[1] * myL + site3[2] * myL ** 2
-                ry1 = lat.right(site2[1],myL) * myL + site2[0] + site2[2] * myL ** 2
-                ry2 = lat.right(site3[1],myL) * myL + site3[0] + site3[2] * myL ** 2
-                rz1 = lat.right(site2[2],myL) * myL ** 2 + site2[0] + site2[1] * myL
-                rz2 = lat.right(site3[2],myL) * myL ** 2+ site3[0] + site3[1] * myL
-
-                lx1 = lat.left(site2[0],myL) + site2[1] * myL + site2[2] * myL ** 2
-                lx2 = lat.left(site3[0],myL) + site3[1] * myL + site3[2] * myL ** 2
-                ly1 = lat.left(site2[1],myL) * myL + site2[0] + site2[2] * myL ** 2
-                ly2 = lat.left(site3[1],myL) * myL + site3[0] + site3[2] * myL ** 2
-                lz1 = lat.left(site2[2],myL) * myL ** 2 + site2[0] + site2[1] * myL
-                lz2 = lat.left(site3[2],myL) * myL ** 2+ site3[0] + site3[1] * myL
-
-                ret[pos1, pos2, pos2, pos1] += val
-                
+                if sz1+sz2 != sz3+sz4: #Sz is not conserved
+                    continue
+                if tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
+                    continue
+                if indl > indk: 
+                    ret.append([indi, indj, indk, indl, val])
     return ret
 
 def onePionEx(myL, bpi, spin, a_lat):
@@ -217,8 +277,8 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                 for site2 in lattice:
                     for tz2 in range(isospin):
                         for sz2 in range(spin):
-                            # if tz1 == tz2 and sz1 == sz2: #not asymetric under exchange
-                            #     continue
+                            if tz1 == tz2 and sz1 == sz2: #not asymetric under exchange
+                                continue
                             stat2 = copy.deepcopy(site2)
                             stat2.append(tz2)
                             stat2.append(sz2)
@@ -227,19 +287,19 @@ def interact(interMat, lattice, myL, spin=2, isospin=2):
                                 continue
                             for tz3 in range(isospin):
                                 for sz3 in range(spin):
-                                    stat3 = copy.deepcopy(site2)
+                                    stat3 = copy.deepcopy(site1)
                                     stat3.append(tz3)
                                     stat3.append(sz3)
                                     indx3 = lat.state2index(stat3, myL=myL, spin=spin, isospin=isospin)
                                     for tz4 in range(isospin):
-                                        # if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
-                                        #     continue
+                                        if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
+                                            continue
                                         for sz4 in range(spin):
-                                            # if sz1+sz2 != sz3+sz4: #Sz is not conserved
-                                            #     continue
-                                            # if tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
-                                            #     continue
-                                            stat4 = copy.deepcopy(site1)
+                                            if sz1+sz2 != sz3+sz4: #Sz is not conserved
+                                                continue
+                                            if tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
+                                                continue
+                                            stat4 = copy.deepcopy(site2)
                                             stat4.append(tz4)
                                             stat4.append(sz4)
                                             indx4 = lat.state2index(stat4, myL=myL, spin=spin, isospin=isospin)
@@ -375,7 +435,7 @@ def get_full_int(myL, bpi, c0, sL, sNL, a, at, method=1, nk = 2, spin = 2, isosp
         kinMat = tKin2(myL, nk, a)
         kin = tKinMatToList(kinMat, myL, spin, isospin)
     id = np.identity(myL**3)
-    trMat = (id - at * kinMat) @ (id - at * kinMat) - at * np.real((onePionEx(myL, bpi, 0, a)) + (smearedInteract(myL, c0, sL, sNL)))
+    trMat = (id - at * kinMat) @ (id - at * kinMat) - at * np.real((smearedInteract(myL, c0, sL, sNL)))
     interMat = trMat / at - kinMat
     full_int = interact(interMat, lattice, myL, spin, isospin)
     return kin, full_int, trMat
@@ -431,12 +491,8 @@ def tKinMatToList(tMat, myL, spin = 2, isospin =2):
             val = tMat[i][j]
             if val == 0:
                 continue
-            indx1 = i % myL
-            indy1 = ((i - indx1) // myL) % myL
-            indz1 = ((i - indx1) // myL - indy1) // myL
-            indx2 = j % myL
-            indy2 = ((j - indx2) // myL) % myL
-            indz2 = ((j - indx2) // myL - indy2) // myL
+            indx1, indy1, indz1 = indConvXYZ(i, myL)
+            indx2, indy2, indz2 = indConvXYZ(j, myL)
             for tz in range(isospin):
                 for sz in range(spin):
                     state1 = [indx1, indy1, indz1, tz, sz]
@@ -453,3 +509,4 @@ def indConv(ind, myL, spin=2, isospin=2):
     j = ((indx - k)// myL) % myL
     i = ((indx - k) // myL - j) // myL
     return i + j * myL + k * myL ** 2, sz, tz
+
