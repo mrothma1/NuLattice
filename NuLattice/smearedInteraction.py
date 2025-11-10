@@ -131,6 +131,13 @@ def potMat(lattice, myL, sL, sNL, c0):
         pos1_lst = [pos1, rx1, ry1, rz1, lx1, ly1, lz1]
         pos2_lst = [pos2, rx2, ry2, rz2, lx2, ly2, lz2]
         for i, j, k, l in itertools.product(pos1_lst, pos2_lst, pos1_lst, pos2_lst):
+            sign = 1
+            # if i == j or k == l:
+                # continue
+            # if i < j:
+            #     sign *= -1
+            # if k < l:
+            #     sign *= -1
             count = 0
             if i != pos1:
                 count +=1
@@ -140,7 +147,7 @@ def potMat(lattice, myL, sL, sNL, c0):
                 count += 1
             if l != pos2:
                 count += 1
-            ret[i,j,k,l] += val * (sNL ** count)
+            ret[i,j,k,l] += sign * val * (sNL ** count)
     return ret
 
 def pot_mat_to_tbme(mat, myL, spin=2, isospin=2):
@@ -148,29 +155,29 @@ def pot_mat_to_tbme(mat, myL, spin=2, isospin=2):
     nzInds = np.nonzero(mat)
     nzVals = mat[nzInds]
     nzLst = np.column_stack((*nzInds, nzVals))
-    for indx in nzLst:
-        i, j, k, l, val = indx
-        xi, yi, zi = indConvXYZ(i, myL)
-        xj, yj, zj = indConvXYZ(j, myL)
-        xk, yk, zk = indConvXYZ(k, myL)
-        xl, yl, zl = indConvXYZ(l, myL)
-
-        for sz1, tz1, sz2, tz2 in itertools.product(range(spin), range(isospin), range(spin), range(isospin)):
-            indi = lat.state2index([xi, yi, zi, sz1, tz1], myL)
-            indj = lat.state2index([xj, yj, zj, sz2, tz2], myL)
-            if indi <= indj or (tz1 == tz2 and sz1 == sz2):
+    for sz1, tz1, sz2, tz2 in itertools.product(range(spin), range(isospin), range(spin), range(isospin)):
+        for sz3, tz3, sz4, tz4 in itertools.product(range(spin), range(isospin), range(spin), range(isospin)):
+            if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
                 continue
-            for sz3, tz3, sz4, tz4 in itertools.product(range(spin), range(isospin), range(spin), range(isospin)):
+            if sz1+sz2 != sz3+sz4: #Sz is not conserved
+                continue
+            for indx in nzLst:
+                i, j, k, l, val = indx
+                xi, yi, zi = indConvXYZ(i, myL)
+                xj, yj, zj = indConvXYZ(j, myL)
+                xk, yk, zk = indConvXYZ(k, myL)
+                xl, yl, zl = indConvXYZ(l, myL)
+                indi = lat.state2index([xi, yi, zi, sz1, tz1], myL)
+                indj = lat.state2index([xj, yj, zj, sz2, tz2], myL)
                 indk = lat.state2index([xk, yk, zk, sz3, tz3], myL)
                 indl = lat.state2index([xl, yl, zl, sz4, tz4], myL)
-                if tz1 + tz2 != tz3 + tz4: #Tz is not conserved
+                if indi == indj and tz1 == tz2 and sz1 == sz2:
                     continue
-                if sz1+sz2 != sz3+sz4: #Sz is not conserved
+                if indk == indl and tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
                     continue
-                if tz3 == tz4 and sz3 == sz4: #not asymetric under exchange
-                    continue
-                if indl > indk: 
+                if indi < indj and indl > indk: 
                     ret.append([indi, indj, indk, indl, val])
+        
     return ret
 
 def onePionEx(myL, bpi, spin, a_lat):
