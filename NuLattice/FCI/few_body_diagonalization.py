@@ -11,7 +11,6 @@ __date__      = "2025-07-26"
 from itertools import combinations
 import numpy as np
 from scipy import sparse as sparse
-import time
 
 
 def get_many_body_states(basis, num_part, total_tz=None, total_sz=None):
@@ -836,7 +835,7 @@ def csr_matrix_tolist_2body(op_csr,lookup2b):
     """
     keys=[]
     vals=[]
-    time0= time.time()
+    
     for key, value in lookup2b.items():
         keys.append(key)
         vals.append(value)
@@ -900,7 +899,7 @@ def csr_matrix_tolist_3body(op_csr,lookup3b):
     """
     keys=[]
     vals=[]
-    time0= time.time()
+    
     for key, value in lookup3b.items():
         keys.append(key)
         vals.append(value)
