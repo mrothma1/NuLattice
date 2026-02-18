@@ -46,9 +46,9 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     pnum=len(part)
     hnum=len(hole)
     
-    f_pp = np.zeros((pnum,pnum))
-    f_ph = np.zeros((pnum,hnum))
-    f_hh = np.zeros((hnum,hnum))
+    f_pp = np.zeros((pnum,pnum),dtype=complex)
+    f_ph = np.zeros((pnum,hnum),dtype=complex)
+    f_hh = np.zeros((hnum,hnum),dtype=complex)
 
 
     for a in range(pnum):
@@ -123,13 +123,13 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
         v_pppp = []
         v_ppph = []
     else:
-        v_pppp = np.zeros((pnum,pnum,pnum,pnum))
-        v_ppph = np.zeros((pnum,pnum,pnum,hnum))
+        v_pppp = np.zeros((pnum,pnum,pnum,pnum),dtype=complex)
+        v_ppph = np.zeros((pnum,pnum,pnum,hnum),dtype=complex)
 
-    v_pphh=np.zeros((pnum,pnum,hnum,hnum))
-    v_phph=np.zeros((pnum,hnum,pnum,hnum))
-    v_phhh=np.zeros((pnum,hnum,hnum,hnum))
-    v_hhhh=np.zeros((hnum,hnum,hnum,hnum))
+    v_pphh=np.zeros((pnum,pnum,hnum,hnum),dtype=complex)
+    v_phph=np.zeros((pnum,hnum,pnum,hnum),dtype=complex)
+    v_phhh=np.zeros((pnum,hnum,hnum,hnum),dtype=complex)
+    v_hhhh=np.zeros((hnum,hnum,hnum,hnum),dtype=complex)
     for [i1,i2,i3,i4, val] in mycontact:
         currSparse = False
         # note: i1<i2 and i3<i4 is stored only in mycontact
@@ -373,8 +373,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     pnum = len(f_pp)
     hnum = len(f_hh)
 
-    X_hh = np.zeros((hnum, hnum))
-    X_pp = np.zeros((pnum, pnum))
+    X_hh = np.zeros((hnum, hnum),dtype=complex)
+    X_pp = np.zeros((pnum, pnum),dtype=complex)
     
     X_hh -= f_hh #2
     X_pp += f_pp #3
@@ -486,8 +486,8 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     pnum = len(f_pp)
     hnum = len(f_hh)
 
-    X_hh = np.zeros((hnum, hnum))
-    X_pp = np.zeros((pnum, pnum))
+    X_hh = np.zeros((hnum, hnum),dtype=complex)
+    X_pp = np.zeros((pnum, pnum),dtype=complex)
     #factoring out all of the X_a^a and X_i^i terms
     #note that I am again calculating -X_i^i here like for t1
     X_hh -= f_hh
@@ -613,7 +613,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
         error_t1 = (t1 - oldT1).ravel()
         error_t2 = (t2 - oldT2).ravel()
         error = np.concatenate((error_t1, error_t2))
-        rel_err = error / (np.concatenate((t1.ravel(), t2.ravel())) + 1e-15)
+        rel_err =  error / (np.concatenate((t1.ravel(), t2.ravel())) + 1e-15)
         if np.max(rel_err) < min_err:
             if verbose:
                 print(f'Energy found in {i+1} iterations')
@@ -630,7 +630,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             del diis_errors[0]
                 
             diis_size -= 1
-            B = -1 * np.ones((diis_size, diis_size))
+            B = -1 * np.ones((diis_size, diis_size),dtype=complex)
             B[-1, -1] = 0
 
             for n1, e1 in enumerate(diis_errors):
@@ -640,7 +640,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
 
             B[:-1, :-1] /= np.abs(B[:-1, :-1]).max()
 
-            resid = np.zeros(diis_size)
+            resid = np.zeros(diis_size,dtype=complex)
             resid[-1] = -1
 
             ci = np.linalg.solve(B, resid)

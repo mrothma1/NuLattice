@@ -25,13 +25,13 @@ def v_ppph_dgrams(v_ppph, t1, t2):
     """
     pnum = np.shape(t1)[0]
     hnum = np.shape(t1)[1]
-    ret0 = np.zeros((pnum, hnum))
-    ret1 = np.zeros((pnum, pnum))
-    ret2 = np.zeros((pnum, pnum, hnum, hnum))
-    ret3 = np.zeros((pnum, pnum))
-    ret4 = np.zeros((pnum, pnum, hnum, hnum))
-    ret5 = np.zeros((pnum, hnum, hnum, hnum))
-    ret6 = np.zeros((pnum, hnum, hnum, hnum))
+    ret0 = np.zeros((pnum, hnum),dtype=complex)
+    ret1 = np.zeros((pnum, pnum),dtype=complex)
+    ret2 = np.zeros((pnum, pnum, hnum, hnum),dtype=complex)
+    ret3 = np.zeros((pnum, pnum),dtype=complex)
+    ret4 = np.zeros((pnum, pnum, hnum, hnum),dtype=complex)
+    ret5 = np.zeros((pnum, hnum, hnum, hnum),dtype=complex)
+    ret6 = np.zeros((pnum, hnum, hnum, hnum),dtype=complex)
     doubleT1 = contract('ci, dj ->cdij', t1, t1)
     for vals in v_ppph:
         c, d, a, k, v = vals
@@ -227,8 +227,8 @@ def v_pppp_dgrams(v_pppp, t1, t2):
     """
     hnum = np.shape(t1)[1]
     pnum = np.shape(t1)[0]
-    ret1 = np.zeros((pnum, pnum,hnum, hnum))
-    ret2 = np.zeros((pnum, pnum,hnum, hnum))
+    ret1 = np.zeros((pnum, pnum,hnum, hnum),dtype=complex)
+    ret2 = np.zeros((pnum, pnum,hnum, hnum),dtype=complex)
     doubleT1 = contract('ci, dj ->cdij', t1, t1)
     for val in v_pppp:
         a, b, c, d, v = val

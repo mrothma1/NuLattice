@@ -182,13 +182,12 @@ def fill_2b_op_in_2b_basis(lookup,operator):
         [a, b, c, d, val] = tbme
         ii = lookup.get((a,b))
         jj = lookup.get((c,d))
+        
         if ii is None or jj is None: # not found
             continue
-
         op_dat.append(val)
         op_row.append(ii)
         op_col.append(jj)
-
     return op_dat, op_row, op_col
 
 
