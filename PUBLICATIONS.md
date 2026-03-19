@@ -38,7 +38,7 @@ Main message: The normal-ordered two-body approximation, commonly used in ab ini
 Main message: Nuclear forces are short ranged. Representing them on a position-space lattice makes nuclear Hamiltonians sparse. This can be used to perform nontrivial ab initio calculations on laptops. `NuLattice` is a Python package that performs ab initio computations, including Hartree-Fock, exact diagonalization, coupled-cluster, and in-medium similarity renormalization group calculations.
 
 ```
-@article{Rothman:2025uza,
+@article{Rothman2026_NuLattice,
     author = "Rothman, M. and Johnson-Toth, B. and Hagen, G. and Heinz, M. and Papenbrock, T.",
     title = "{NuLattice: Ab initio computations of atomic nuclei on lattices}",
     eprint = "2509.08771",
