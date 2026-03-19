@@ -1,6 +1,6 @@
 # List of publications using `NuLattice`
 
-1. Chenyi Gu, Matthias Heinz, Oriel Kiss, Thomas Papenbrock, "Toward scalable quantum computations of atomic nuclei," [arXiv:2507.14690](https://arxiv.org/abs/2507.14690)
+## 1. Chenyi Gu, Matthias Heinz, Oriel Kiss, Thomas Papenbrock, "Toward scalable quantum computations of atomic nuclei," [arXiv:2507.14690](https://arxiv.org/abs/2507.14690)
 
 Main message: The sparsity of nuclear Hamiltonians on a position-space lattice basis makes them amenable to quantum computing. Combining this and second quantization allows for quantum computations to scale favorably and have the potential to solve problems that would not be possible using classical computations.
 
@@ -13,7 +13,7 @@ Main message: The sparsity of nuclear Hamiltonians on a position-space lattice b
 }
 ```
 
-2. Maxwell Rothman, Ben Johnson-Toth, Francesca Bonaiti, Gaute Hagen, Matthias Heinz, Thomas Papenbrock, "Exactness of the normal-ordered two-body truncation of three-nucleon forces," [Phys. Rev. C **112** L051301 (2025)](https://doi.org/10.1103/psnh-gc5k), [arXiv:2508.01507](https://arxiv.org/abs/2508.01507)
+## 2. Maxwell Rothman, Ben Johnson-Toth, Francesca Bonaiti, Gaute Hagen, Matthias Heinz, Thomas Papenbrock, "Exactness of the normal-ordered two-body truncation of three-nucleon forces," [Phys. Rev. C **112** L051301 (2025)](https://doi.org/10.1103/psnh-gc5k), [arXiv:2508.01507](https://arxiv.org/abs/2508.01507)
 
 Main message: The normal-ordered two-body approximation, commonly used in ab initio computations, is exact with zero-range three-nucleon forces in coupled-cluster calculations at the singles and doubles level.
 
@@ -31,7 +31,7 @@ Main message: The normal-ordered two-body approximation, commonly used in ab ini
 }
 ```
 
-3. Maxwell Rothman, Ben Johnson-Toth, Gaute Hagen, Matthias Heinz, Thomas Papenbrock, "`NuLattice`: Ab initio computations of atomic nuclei on lattices," [Eur. Phys. J. A **62** 28 (2026)](https://doi.org/10.1140/epja/s10050-025-01764-6), [arXiv:2509.08771](https://arxiv.org/abs/2509.08771)
+## 3. Maxwell Rothman, Ben Johnson-Toth, Gaute Hagen, Matthias Heinz, Thomas Papenbrock, "`NuLattice`: Ab initio computations of atomic nuclei on lattices," [Eur. Phys. J. A **62** 28 (2026)](https://doi.org/10.1140/epja/s10050-025-01764-6), [arXiv:2509.08771](https://arxiv.org/abs/2509.08771)
 
 Main message: Nuclear forces are short ranged. Representing them on a position-space lattice makes nuclear Hamiltonians sparse. This can be used to perform nontrivial ab initio calculations on laptops. `NuLattice` is a Python package that performs ab initio computations, including Hartree-Fock, exact diagonalization, coupled-cluster, and in-medium similarity renormalization group calculations.
 
