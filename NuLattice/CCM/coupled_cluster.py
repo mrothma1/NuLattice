@@ -250,6 +250,7 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
         if vint is not None:
             for i, indx in enumerate(indices):
                 sign = signs[i]
+                val = np.real_if_close(val, tol = 1000) + 0j
                 if currSparse:
                     vint.append([indx[0], indx[1], indx[2], indx[3], val * sign_ket * sign_bra * sign])
                 else:
@@ -275,11 +276,11 @@ def ccsd_energy(f_ph, v_pphh, t2, t1):
     :return:        CCSD correlation energy
     :rtype:         float
     """
-    erg = ( contract( 'ai,ai', f_ph, t1 )
-           + contract( 'abij,abij', v_pphh, t2 )*0.25
-           + contract( 'abij,ai,bj', v_pphh, t1, t1, optimize='greedy' )*0.5
+    erg = ( contract( 'ai,ai', np.conj(f_ph), t1 )
+           + contract( 'abij,abij', np.conj(v_pphh), t2 )*0.25
+           + contract( 'abij,ai,bj', np.conj(v_pphh), t1, t1, optimize='greedy' )*0.5
             )
-    return erg
+    return np.real_if_close(erg)
 
 def get_ref_energy(no_1b_hh, no_2b_hhhh, w_hhh_hhh=None):
     """
@@ -307,7 +308,7 @@ def get_ref_energy(no_1b_hh, no_2b_hhhh, w_hhh_hhh=None):
             [m, i, j, n, k, l, val] = ele
             if (m, i, j) == (n, k, l):
                 en  += val / 6.0
-    return en   
+    return np.real_if_close(en)
 
 def t1Init(f_ph, f_pp, f_hh, delta):
     """
@@ -392,8 +393,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
         H1 += v_ppph_results[0]
         X_pp += v_ppph_results[1]
     else:
-        H1 += - 0.5 * contract('cdak, cdki -> ai', v_ppph_results, t2)#6
-        X_pp -= contract('cdak, ck -> ad', v_ppph_results, t1) #10
+        H1 += - 0.5 * contract('cdak, cdki -> ai', np.conj(v_ppph_results), t2)#6
+        X_pp -= contract('cdak, ck -> ad', np.conj(v_ppph_results), t1) #10
     
     H1  += contract('ac, ci -> ai', X_pp, t1) + contract('ki, ak -> ai', X_hh, t1)
 
@@ -513,10 +514,10 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
         H2 += 0.5 * dgrams.pIJ(dgram_abcd_ci_dj)
     else:
         H2 += dgrams.pIJ(contract('abcj, ci -> abij', v_ppph_results, t1))
-        H2 += - dgrams.pAB(contract('cdak, ck, dbij -> abij', v_ppph_results, t1, t2, optimize="greedy"))
-        H2 += dgrams.pIJ(dgrams.pAB(contract('dcak, di, bcjk -> abij', v_ppph_results, t1, t2, optimize="greedy")))
-        H2 += 0.5 * dgrams.pAB(contract('cdbk, ak, cdij -> abij', v_ppph_results, t1, t2, optimize="greedy"))
-        H2 += 0.5 * dgrams.pIJ(dgrams.pAB(contract('cdbk, ci, ak, dj -> abij', v_ppph_results, t1, t1, t1, optimize="greedy")))
+        H2 += - dgrams.pAB(contract('cdak, ck, dbij -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy"))
+        H2 += dgrams.pIJ(dgrams.pAB(contract('dcak, di, bcjk -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy")))
+        H2 += 0.5 * dgrams.pAB(contract('cdbk, ak, cdij -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy"))
+        H2 += 0.5 * dgrams.pIJ(dgrams.pAB(contract('cdbk, ci, ak, dj -> abij', np.conj(v_ppph_results), t1, t1, t1, optimize="greedy")))
         H2 += 0.5 * contract('abcd, cdij -> abij', v_pppp, t2)
         H2 += 0.5 * dgrams.pIJ(contract('abcd, ci, dj -> abij', v_pppp, t1, t1, optimize="greedy"))
 
@@ -566,12 +567,14 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = two_body_int
     if t1initial is None:
         t1 = t1Init(f_ph, f_pp, f_hh, delta)
+        t1.imag[abs(t1.imag) < 1e-13] = 0
     else:
         t1 = t1initial
     if ccs or t1initial is not None:
         t2 = np.zeros_like(v_pphh)
     else:
         t2 = t2Init(f_pp, f_hh, v_pphh, delta)
+        t2.imag[abs(t2.imag) < 1e-13] = 0
 
     if max_diis > 0:
         diis_vals_t1 = [deepcopy(t1)]
@@ -582,7 +585,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     
     if verbose:
         print(f'Step {0}: {prevEnergy}')
-    min_err =np.sqrt(eps)
+    # min_err =np.sqrt(eps)
     #iterate
     for i in range(maxSteps):
         oldT1 = deepcopy(t1)
@@ -599,25 +602,26 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
                                                       v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
                                                       sparse=sparse)
-
+        t1.imag[abs(t1.imag) < 1e-13] = 0
+        t2.imag[abs(t2.imag) < 1e-13] = 0
         energy = ccsd_energy(f_ph,v_pphh, t2, t1)
 
         if verbose:
             print(f'Step {i+1}: {energy}', "difference =", abs(energy - prevEnergy) / abs(energy))
 
-        # if (energy == 0 and prevEnergy == 0) or abs(energy - prevEnergy) / abs(energy) < eps:
-        #     if verbose:
-        #         print(f'Energy found in {i+1} iterations')
-        #     return energy, t1, t2
+        if (energy == 0 and prevEnergy == 0) or abs(energy - prevEnergy) / abs(energy) < eps:
+            if verbose:
+                print(f'Energy found in {i+1} iterations')
+            return energy, t1, t2
         
         error_t1 = (t1 - oldT1).ravel()
         error_t2 = (t2 - oldT2).ravel()
         error = np.concatenate((error_t1, error_t2))
-        rel_err =  error / (np.concatenate((t1.ravel(), t2.ravel())) + 1e-15)
-        if np.max(rel_err) < min_err:
-            if verbose:
-                print(f'Energy found in {i+1} iterations')
-            return energy, t1, t2
+        # rel_err =  error / (np.concatenate((t1.ravel(), t2.ravel())) + 1e-15)
+        # if np.max(rel_err) < min_err:
+        #     if verbose:
+        #         print(f'Energy found in {i+1} iterations')
+        #     return energy, t1, t2
 
         if max_diis > 0:
             diis_errors.append(error)
@@ -636,7 +640,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             for n1, e1 in enumerate(diis_errors):
                 for n2, e2 in enumerate(diis_errors):
                     # Vectordot the error vectors
-                    B[n1, n2] = np.dot(e1, e2)
+                    B[n1, n2] = np.vdot(e1, e2)
 
             B[:-1, :-1] /= np.abs(B[:-1, :-1]).max()
 
@@ -764,6 +768,10 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
     
     f_pp, f_ph, f_hh = get_fock_matrices(part, hole, myTkin,v_phph, v_phhh, v_hhhh)
 
+    f_pp.imag[abs(f_pp.imag) < 1e-13] = 0
+    f_ph.imag[abs(f_ph.imag) < 1e-13] = 0
+    f_hh.imag[abs(f_hh.imag) < 1e-13] = 0
+    
     three_body_int = None
     #getting the 3 body interactions if needed and adding the effective contribution to the fock matrices and two body interactions
     if my3body is not None:
