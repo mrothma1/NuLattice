@@ -97,7 +97,7 @@ def densNonLoc(site, myL, sNL, spin=2, isospin=2):
             ret += sparse.csr_array(np.outer(obo, obo))
     return ret
 
-def shortRangeV(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False):
+def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, max_mem = 1e8):
     """
     Generates the leading-order short-range interaction defined in equation 13
     
@@ -119,14 +119,13 @@ def shortRangeV(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose
     :type isospin:  int  
     :param verbose: Optional; whether or not to print progress during calculation
     :type verbose:  bool
-    :return:        list of lists [i, j, k, l, value] where i, j and k, l are indices of two particles
-                    in the single-particle basis, and value is the value of the matrix element <ij||kl> in MeV. 
-                    All elements have i<j and k<l
-    :rtype:         list[(int, int, int, int, float)]
+    :param max_mem: maximum memory size for the temporary float array to get to before compressing it into a scipy.sparse array
+    :type max_mem:  float
+    :return:        A sparse csr_array representing V^{abc}_{ijk} in MeV, for dim=spin*isospin*L^3,
+                    the row indicies correspond to a + b * dim + c * dim ^2 and column 
+                    indices correspond to i + j * dim + k * dim^2
+    :rtype:         scipy.sparse.csr_array()
     """
-    ret = []
-
-
     #list of density matrices
     rhos = []
     if verbose:
@@ -150,7 +149,7 @@ def shortRangeV(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose
     if verbose:
         print('Done\nGenerating Interaction...')
     
-    sparse_full_int = sparse.csr_array((dim * dim, dim * dim))
+    sparse_full_int = sparse.csr_array((dim ** 2, dim ** 2))
     #Fully compute eq 13
     tmp_col = []
     tmp_row = []
@@ -167,11 +166,10 @@ def shortRangeV(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose
                     tmp_col.append(b + a * dim)
                     tmp_row.append(c + d * dim)
                     tmp_val.append(-matele)
-                if sys.getsizeof(tmp_val) >= 1e8:
+                if max_mem != 0 and sys.getsizeof(tmp_val) >= 1e8:
                     if verbose:
                         print(f'Compressing interaction...',end='')
                     sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
-                    sparse_full_int.sum_duplicates()
                     tmp_val = []
                     tmp_row = []
                     tmp_col = []
@@ -181,27 +179,124 @@ def shortRangeV(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose
         if verbose:
             print(f'Compressing interaction...',end='')
         sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
-        sparse_full_int.sum_duplicates()
         if verbose:
             print('Done')
     if verbose:
-        print('Interaction Generated\nConverting to List...',end='')
-    del(tmp_val)
-    del(tmp_row)
-    del(tmp_col)
+        print('Interaction Generated')
 
-    sparse_full_int = sparse_full_int.tocoo()
-    for i, j, v in zip(sparse_full_int.row, sparse_full_int.col, sparse_full_int.data):
-        a = i % dim
-        b = (i - a) // dim
-        c = j % dim
-        d = (j - c) // dim
+    return sparse_full_int
 
-        ret.append([a, b, c, d, v])
+def shortRangeV_3body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, max_mem = 1e8):
+    """
+    Generates the leading-order short-range interaction defined in equation 13
+    
+    :param lattice: list of lattice sites returned by lattice.get_lattice
+    :type lattice:  list[(int, int, int)] 
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param sL:      local smearing strength
+    :type sL:       float
+    :param sNL:     non-local smearing strength
+    :type sNL:      float
+    :param c0:      strength of the short range interaction
+    :type c0:       float
+    :param a_lat: lattice spacing divided by hbar c
+    :type a_lat: float
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int  
+    :param verbose: Optional; whether or not to print progress during calculation
+    :type verbose:  bool
+    :param max_mem: maximum memory size for the temporary float array to get to before compressing it into a scipy.sparse array
+    :type max_mem:  float
+    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV with the row 
+                    indicies corresponding to a + b * spin*isospin*L^3 and column 
+                    indices corresponding to i + j * spin*isospin*L^3
+    :rtype:         scipy.sparse.csr_array()
+    """
+    #list of density matrices
+    rhos = []
     if verbose:
-        print('Done')
+        print('Generating Densities...',end='')
+    for site in lattice:
+        rhos.append(densNonLoc(site, myL, sNL, spin, isospin))
+    if verbose:
+        print('Done\nGenerating rho * f_SL...',end='')
 
-    return ret
+    dim  = myL **3 * spin * isospin
+    #List of sum_n rho(n)f_SL(m)
+    rho_fsl = []
+    for site1 in lattice:
+        tmp = sparse.csr_array(np.zeros([dim, dim]))
+        for site2 in lattice:
+            pos = site2[0] * myL ** 2 + site2[1] * myL + site2[2]
+            scale = f_SL(site1, site2, myL, sL)
+            if scale != 0:
+                tmp += rhos[pos] * scale
+        rho_fsl.append(tmp.tocoo())
+    if verbose:
+        print('Done\nGenerating Interaction...')
+    
+    sparse_full_int = sparse.csr_array((dim ** 3, dim ** 3))
+
+    tmp_col = []
+    tmp_row = []
+    tmp_val = []
+    for optempn in rho_fsl:        
+        for a, d, v in zip(optempn.row, optempn.col, optempn.data):
+            for b, e, w in zip(optempn.row, optempn.col, optempn.data):       
+                for c, f, x in zip(optempn.row, optempn.col, optempn.data):
+                    matele = c0 * v * w * x / a_lat
+                    if a < b and b < c and d < e and e < f:
+                        tmp_col.append(a + b * dim + c * dim ** 2)
+                        tmp_row.append(d + e * dim + f * dim ** 2)
+                        tmp_val.append(matele)
+                    
+                    if b < a and a < c and d < e and e < f:
+                        tmp_col.append(b + a * dim + c * dim ** 2)
+                        tmp_row.append(d + e * dim + f * dim ** 2)
+                        tmp_val.append(-matele)
+                    
+                    if c < b and b < a and d < e and e < f:
+                        tmp_col.append(c + b * dim + a * dim ** 2)
+                        tmp_row.append(d + e * dim + f * dim ** 2)
+                        tmp_val.append(matele)
+                    
+                    if a < c and c < b and d < e and e < f:
+                        tmp_col.append(a + c * dim + b * dim ** 2)
+                        tmp_row.append(d + e * dim + f * dim ** 2)
+                        tmp_val.append(-matele)
+
+                    if c < b and b < a and d < e and e < f:
+                        tmp_col.append(c + b * dim + a * dim ** 2)
+                        tmp_row.append(d + e * dim + f * dim ** 2)
+                        tmp_val.append(-matele)
+
+                    if b < c and c < a and d < e and e < f:
+                        tmp_col.append(b + c * dim + a * dim ** 2)
+                        tmp_row.append(d + e * dim + f * dim ** 2)
+                        tmp_val.append(matele)
+
+                    if max_mem != 0 and sys.getsizeof(tmp_val) >= 1e8:
+                        if verbose:
+                            print(f'Compressing interaction...',end='')
+                        sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 3, dim ** 3))
+                        tmp_val = []
+                        tmp_row = []
+                        tmp_col = []
+                        if verbose:
+                            print('Done')
+    if len(tmp_col) > 0:
+        if verbose:
+            print(f'Compressing interaction...',end='')
+        sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 3, dim ** 3))
+        if verbose:
+            print('Done')
+    if verbose:
+        print('Interaction Generated')
+
+    return sparse_full_int
 
 def get_spin_op(ind, dof):
     """
@@ -295,7 +390,7 @@ def f_SS(myL, bpi, a_lat):
     qx, qy, qz = np.meshgrid(q, q, q, indexing="ij")
 
     q2 = qx**2 + qy**2 + qz**2
-    ft_fss = np.exp(-bpi * (q2 + m_pi ** 2)) / (q2 + m_pi**2)
+    ft_fss = np.exp(-bpi * q2) / (q2 + m_pi**2)
 
     q = np.array([qx, qy, qz])
 
@@ -326,14 +421,11 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isosp
     :type spin:     int
     :param isospin: Optional; number of isospin degrees of freedom
     :type isospin:  int    
-    :return:        list of lists [i, j, k, l, value] where i, j and k, l are indices of two particles
-                    in the single-particle basis, and value is the value of the matrix element <ij||kl>
-                    in MeV. 
-                    All elements have i<j and k<l
-    :rtype:         list[(int, int, int, int, float)]  
+    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV with the row 
+                    indicies corresponding to a + b * spin*isospin*L^3 and column 
+                    indices corresponding to i + j * spin*isospin*L^3
+    :rtype:         scipy.sparse.csr_array()
     """
-    ret = []
-    
     if verbose:
         print('Calculating f_SS...', end='')
     fSS = f_SS(myL, bpi, a_lat)
@@ -392,7 +484,6 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isosp
                     if verbose:
                         print(f'Compressing interaction...',end='')
                     sparse_full_ope += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
-                    sparse_full_ope.sum_duplicates()
                     tmp_val = []
                     tmp_row = []
                     tmp_col = []
@@ -402,26 +493,69 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isosp
         if verbose:
             print(f'Compressing interaction...',end='')
         sparse_full_ope += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
-        sparse_full_ope.sum_duplicates()
         if verbose:
             print('Done')
     if verbose:
-        print('Interaction Generated\nConverting to List...', end='')
-    del(tmp_val)
-    del(tmp_row)
-    del(tmp_col)
-    
-    sparse_full_ope = sparse_full_ope.tocoo()
-    for i, j, v in zip(sparse_full_ope.row, sparse_full_ope.col, sparse_full_ope.data):
+        print('Interaction Generated')
+
+    return sparse_full_ope
+
+def sparse_to_list_2body(sparse_int, myL, spin=2, isospin=2):
+    """
+    Takes sparse two-body interaction and converts it to a list
+
+    :param sparse_int:  Interaction stored as a sparse matrix
+    :type sparse_int:   scipy.sparse.csr_array
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spin:         int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int  
+    :return:            list of lists [a,b,c,d,v] where a, b, c, and d are 
+                        indices and v is the value for V^ab_cd
+    :rtype:             list[[int, int, int, int, float]]
+    """
+    ret = []
+    dim  = myL ** 3 * spin * isospin
+    sparse_int_coo = sparse_int.tocoo()
+    for i, j, v in zip(sparse_int_coo.row, sparse_int_coo.col, sparse_int_coo.data):
         a = i % dim
         b = (i - a) // dim
         c = j % dim
         d = (j - c) // dim
 
         ret.append([a, b, c, d, v])
-    if verbose:
-        print('Done')
+    return ret
 
+def sparse_to_list_3body(sparse_int, myL, spin=2, isospin=2):
+    """
+    Takes sparse 3-body interaction and converts it to a list
+
+    :param sparse_int:  Interaction stored as a sparse matrix
+    :type sparse_int:   scipy.sparse.csr_array
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spin:         int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int  
+    :return:            list of lists [a,b,c,d,e,f,v] where a, b, c, d, e, and f
+                        are indices and v is the value for V^abc_def
+    :rtype:             list[[int, int, int, int, int, int float]]
+    """
+    ret = []
+    dim  = myL ** 3 * spin * isospin
+    sparse_int_coo = sparse_int.tocoo()
+    for i, j, v in zip(sparse_int_coo.row, sparse_int_coo.col, sparse_int_coo.data):
+        a = i % dim
+        b = ((i - a) // dim) % dim
+        c = (((i - a) // dim) - b) // dim
+        d = j % dim
+        e = ((j - d) // dim) % dim
+        f = (((j - d) // dim) - e) // dim
+
+        ret.append([a, b, c, d, e, f, v])
     return ret
 
 def indConv(ind, myL):
