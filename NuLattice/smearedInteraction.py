@@ -9,6 +9,7 @@ import math
 import itertools
 import scipy.sparse as sparse
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def f_SL(site1, site2, myL, sL):
     """
@@ -97,7 +98,31 @@ def densNonLoc(site, myL, sNL, spin=2, isospin=2):
             ret += sparse.csr_array(np.outer(obo, obo))
     return ret
 
-def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, max_mem = 1e8):
+def rho_tilde_sq_NO(optempn, dim, mult, max_mem = 0):
+    tmp_col = []
+    tmp_row = []
+    tmp_val = []   
+    ret = sparse.csr_array((dim ** 2, dim ** 2))    
+    for a, c, v in zip(optempn.row, optempn.col, optempn.data):
+        for b, d, w in zip(optempn.row, optempn.col, optempn.data):                
+            matele = mult * v * w
+            if a < b and c < d:
+                tmp_col.append(a + b * dim)
+                tmp_row.append(c + d * dim)
+                tmp_val.append(matele)
+            if b < a and c < d:
+                tmp_col.append(b + a * dim)
+                tmp_row.append(c + d * dim)
+                tmp_val.append(-matele)
+                if max_mem != 0 and sys.getsizeof(tmp_val) > max_mem:
+                    ret += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 2, dim ** 2))
+                    tmp_val = []
+                    tmp_row = []
+                    tmp_col = []
+
+    return ret + sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 2, dim ** 2))
+
+def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, max_threads = None, max_mem = 0):
     """
     Generates the leading-order short-range interaction defined in equation 13
     
@@ -147,46 +172,69 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, v
                 tmp += rhos[pos] * scale
         rho_fsl.append(tmp.tocoo())
     if verbose:
-        print('Done\nGenerating Interaction...')
-    
-    sparse_full_int = sparse.csr_array((dim ** 2, dim ** 2))
-    #Fully compute eq 13
-    tmp_col = []
-    tmp_row = []
-    tmp_val = []
-    for optempn in rho_fsl:        
-        for a, c, v in zip(optempn.row, optempn.col, optempn.data):
-            for b, d, w in zip(optempn.row, optempn.col, optempn.data):                
-                matele = c0 * v * w / a_lat
-                if a < b and c < d:
-                    tmp_col.append(a + b * dim)
-                    tmp_row.append(c + d * dim)
-                    tmp_val.append(matele)
-                if b < a and c < d:
-                    tmp_col.append(b + a * dim)
-                    tmp_row.append(c + d * dim)
-                    tmp_val.append(-matele)
-                if max_mem != 0 and sys.getsizeof(tmp_val) >= 1e8:
-                    if verbose:
-                        print(f'Compressing interaction...',end='')
-                    sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
-                    tmp_val = []
-                    tmp_row = []
-                    tmp_col = []
-                    if verbose:
-                        print('Done')
-    if len(tmp_col) > 0:
-        if verbose:
-            print(f'Compressing interaction...',end='')
-        sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
-        if verbose:
-            print('Done')
+        print('Done\nGenerating Interaction...',end='')
+    ret = sparse.csr_array((dim ** 2, dim ** 2))
+    with ProcessPoolExecutor(max_workers=max_threads) as executor:
+        size = len(rho_fsl)
+        for val in executor.map(rho_tilde_sq_NO, rho_fsl, [dim] * size, [c0 / a_lat] * size, [max_mem] * size):
+            ret += val
     if verbose:
         print('Interaction Generated')
 
-    return sparse_full_int
+    return ret
 
-def shortRangeV_3body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, max_mem = 1e8):
+def rho_tilde_cubed_NO(optempn, dim, mult, min_val, max_mem=0):
+    tmp_col = []
+    tmp_row = []
+    tmp_val = [] 
+    ret = sparse.csr_array((dim ** 3, dim ** 3))
+    for a, d, v in zip(optempn.row, optempn.col, optempn.data):
+        if abs(v) < min_val:
+            continue
+        for b, e, w in zip(optempn.row, optempn.col, optempn.data):
+            if abs(w) < min_val:
+                continue     
+            for c, f, x in zip(optempn.row, optempn.col, optempn.data):
+                if abs(x) < min_val:
+                    continue
+                matele = mult * v * w * x
+                if a < b and b < c and d < e and e < f:
+                    tmp_col.append(a + b * dim + c * dim ** 2)
+                    tmp_row.append(d + e * dim + f * dim ** 2)
+                    tmp_val.append(matele)
+                
+                if b < a and a < c and d < e and e < f:
+                    tmp_col.append(b + a * dim + c * dim ** 2)
+                    tmp_row.append(d + e * dim + f * dim ** 2)
+                    tmp_val.append(-matele)
+                
+                if c < b and b < a and d < e and e < f:
+                    tmp_col.append(c + b * dim + a * dim ** 2)
+                    tmp_row.append(d + e * dim + f * dim ** 2)
+                    tmp_val.append(matele)
+                
+                if a < c and c < b and d < e and e < f:
+                    tmp_col.append(a + c * dim + b * dim ** 2)
+                    tmp_row.append(d + e * dim + f * dim ** 2)
+                    tmp_val.append(-matele)
+
+                if c < b and b < a and d < e and e < f:
+                    tmp_col.append(c + b * dim + a * dim ** 2)
+                    tmp_row.append(d + e * dim + f * dim ** 2)
+                    tmp_val.append(-matele)
+
+                if b < c and c < a and d < e and e < f:
+                    tmp_col.append(b + c * dim + a * dim ** 2)
+                    tmp_row.append(d + e * dim + f * dim ** 2)
+                    tmp_val.append(matele)
+                if max_mem != 0 and sys.getsizeof(tmp_val) > max_mem:
+                    ret += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 3, dim ** 3))
+                    tmp_val = []
+                    tmp_row = []
+                    tmp_col = []
+    return ret + sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 3, dim ** 3))
+
+def shortRangeV_3body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, min_val = 0, max_threads = None, max_mem=0):
     """
     Generates the leading-order short-range interaction defined in equation 13
     
@@ -236,67 +284,16 @@ def shortRangeV_3body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, v
                 tmp += rhos[pos] * scale
         rho_fsl.append(tmp.tocoo())
     if verbose:
-        print('Done\nGenerating Interaction...')
-    
-    sparse_full_int = sparse.csr_array((dim ** 3, dim ** 3))
+        print('Done\nGenerating Interaction...',end='')
 
-    tmp_col = []
-    tmp_row = []
-    tmp_val = []
-    for optempn in rho_fsl:        
-        for a, d, v in zip(optempn.row, optempn.col, optempn.data):
-            for b, e, w in zip(optempn.row, optempn.col, optempn.data):       
-                for c, f, x in zip(optempn.row, optempn.col, optempn.data):
-                    matele = c0 * v * w * x / a_lat
-                    if a < b and b < c and d < e and e < f:
-                        tmp_col.append(a + b * dim + c * dim ** 2)
-                        tmp_row.append(d + e * dim + f * dim ** 2)
-                        tmp_val.append(matele)
-                    
-                    if b < a and a < c and d < e and e < f:
-                        tmp_col.append(b + a * dim + c * dim ** 2)
-                        tmp_row.append(d + e * dim + f * dim ** 2)
-                        tmp_val.append(-matele)
-                    
-                    if c < b and b < a and d < e and e < f:
-                        tmp_col.append(c + b * dim + a * dim ** 2)
-                        tmp_row.append(d + e * dim + f * dim ** 2)
-                        tmp_val.append(matele)
-                    
-                    if a < c and c < b and d < e and e < f:
-                        tmp_col.append(a + c * dim + b * dim ** 2)
-                        tmp_row.append(d + e * dim + f * dim ** 2)
-                        tmp_val.append(-matele)
-
-                    if c < b and b < a and d < e and e < f:
-                        tmp_col.append(c + b * dim + a * dim ** 2)
-                        tmp_row.append(d + e * dim + f * dim ** 2)
-                        tmp_val.append(-matele)
-
-                    if b < c and c < a and d < e and e < f:
-                        tmp_col.append(b + c * dim + a * dim ** 2)
-                        tmp_row.append(d + e * dim + f * dim ** 2)
-                        tmp_val.append(matele)
-
-                    if max_mem != 0 and sys.getsizeof(tmp_val) >= 1e8:
-                        if verbose:
-                            print(f'Compressing interaction...',end='')
-                        sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 3, dim ** 3))
-                        tmp_val = []
-                        tmp_row = []
-                        tmp_col = []
-                        if verbose:
-                            print('Done')
-    if len(tmp_col) > 0:
-        if verbose:
-            print(f'Compressing interaction...',end='')
-        sparse_full_int += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 3, dim ** 3))
-        if verbose:
-            print('Done')
+    ret = sparse.csr_array((dim ** 3, dim ** 3))
+    with ProcessPoolExecutor(max_workers=max_threads) as executor:
+        size = len(rho_fsl)
+        for val in executor.map(rho_tilde_cubed_NO, rho_fsl, [dim] * size, [c0 / a_lat] * size, [min_val] * size, [max_mem] * size):
+            ret += val
     if verbose:
         print('Interaction Generated')
-
-    return sparse_full_int
+    return ret
 
 def get_spin_op(ind, dof):
     """
@@ -401,7 +398,7 @@ def f_SS(myL, bpi, a_lat):
 
     return fSS
 
-def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isospin=2):
+def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isospin=2, max_mem=1e8):
     """
     computes the potential for one pion exchange
 
@@ -421,6 +418,8 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isosp
     :type spin:     int
     :param isospin: Optional; number of isospin degrees of freedom
     :type isospin:  int    
+    :param max_mem: maximum memory size for the temporary float array to get to before compressing it into a scipy.sparse array
+    :type max_mem:  float
     :return:        A sparse csr_array representing V^{ab}_{ij} in MeV with the row 
                     indicies corresponding to a + b * spin*isospin*L^3 and column 
                     indices corresponding to i + j * spin*isospin*L^3
@@ -480,7 +479,7 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1, spin=2, isosp
                     tmp_col.append(a + b * dim)
                     tmp_row.append(d + c * dim)
                     tmp_val.append(-matele)
-                if sys.getsizeof(tmp_val) >= 1e8:
+                if max_mem != 0 and sys.getsizeof(tmp_val) >= 1e8:
                     if verbose:
                         print(f'Compressing interaction...',end='')
                     sparse_full_ope += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))

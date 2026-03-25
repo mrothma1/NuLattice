@@ -250,7 +250,6 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
         if vint is not None:
             for i, indx in enumerate(indices):
                 sign = signs[i]
-                val = np.real_if_close(val, tol = 1000) + 0j
                 if currSparse:
                     vint.append([indx[0], indx[1], indx[2], indx[3], val * sign_ket * sign_bra * sign])
                 else:
@@ -567,14 +566,12 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = two_body_int
     if t1initial is None:
         t1 = t1Init(f_ph, f_pp, f_hh, delta)
-        t1.imag[abs(t1.imag) < 1e-13] = 0
     else:
         t1 = t1initial
     if ccs or t1initial is not None:
         t2 = np.zeros_like(v_pphh)
     else:
         t2 = t2Init(f_pp, f_hh, v_pphh, delta)
-        t2.imag[abs(t2.imag) < 1e-13] = 0
 
     if max_diis > 0:
         diis_vals_t1 = [deepcopy(t1)]
@@ -602,8 +599,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
                                                       v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
                                                       sparse=sparse)
-        t1.imag[abs(t1.imag) < 1e-13] = 0
-        t2.imag[abs(t2.imag) < 1e-13] = 0
+
         energy = ccsd_energy(f_ph,v_pphh, t2, t1)
 
         if verbose:
@@ -767,10 +763,6 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
     v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = get_all_interactions(part,hole,mycontact,sparse)
     
     f_pp, f_ph, f_hh = get_fock_matrices(part, hole, myTkin,v_phph, v_phhh, v_hhhh)
-
-    f_pp.imag[abs(f_pp.imag) < 1e-13] = 0
-    f_ph.imag[abs(f_ph.imag) < 1e-13] = 0
-    f_hh.imag[abs(f_hh.imag) < 1e-13] = 0
     
     three_body_int = None
     #getting the 3 body interactions if needed and adding the effective contribution to the fock matrices and two body interactions
