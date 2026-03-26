@@ -15,7 +15,7 @@ import sys, pathlib
 sys.path.append(str(pathlib.Path(__file__).parent / ".." / ".."))
 import NuLattice.CCM.three_body_utils as tbu
 import NuLattice.lattice as lat
-import NuLattice.CCM.ccDgrams as dgrams
+import NuLattice.CCM.ccDgrams_testing as dgrams
 
 def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     """
@@ -330,7 +330,7 @@ def t1Init(f_ph, f_pp, f_hh, delta):
     return f_ph / denom
 
 def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, sparse = True):
+           v_ppph_results, sparse = True, backend='numpy'):
     """
     iterating t1 using the CCSD equations
 
@@ -361,10 +361,10 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     #Calculating H_i^a without the X_i^i and X_a^a terms
     H1 = np.zeros_like(f_ph)
     H1 += (f_ph 
-             + dgrams.dgram_akci_ck(v_phph, t1)
-             + dgrams.dgram_ck_acik(f_ph, t2)
-             + dgrams.dgram_cikl_cakl(v_phhh, t2)
-             + dgrams.dgram_cdkl_ck_dali(v_pphh, t1, t2)
+             + dgrams.dgram_akci_ck(v_phph, t1, backend = backend)
+             + dgrams.dgram_ck_acik(f_ph, t2, backend = backend)
+             + dgrams.dgram_cikl_cakl(v_phhh, t2, backend = backend)
+             + dgrams.dgram_cdkl_ck_dali(v_pphh, t1, t2, backend = backend)
             )
     
 
@@ -380,13 +380,13 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     X_pp += f_pp #3
     
     # #if factoring, add all of the relavent terms to X_i^i and X_a^a
-    X_hh += dgrams.dgram_ck_ci(f_ph, t1) #8
-    X_pp += dgrams.dgram_ck_ak(f_ph, t1) #8
-    X_hh += dgrams.dgram_bijk_bj(v_phhh, t1) #9
-    X_hh += dgrams.dgram_cdlk_cdli(v_pphh, t2) 
-    X_pp += dgrams.dgram_dckl_dakl(v_pphh, t2)
-    X_hh += dgrams.dgram_cdlk_cl_di(v_pphh, t1)
-    X_pp += dgrams.dgram_cdkl_dk_al(v_pphh, t1)
+    X_hh += dgrams.dgram_ck_ci(f_ph, t1, backend = backend) #8
+    X_pp += dgrams.dgram_ck_ak(f_ph, t1, backend = backend) #8
+    X_hh += dgrams.dgram_bijk_bj(v_phhh, t1, backend = backend) #9
+    X_hh += dgrams.dgram_cdlk_cdli(v_pphh, t2, backend = backend) 
+    X_pp += dgrams.dgram_dckl_dakl(v_pphh, t2, backend = backend)
+    X_hh += dgrams.dgram_cdlk_cl_di(v_pphh, t1, backend = backend)
+    X_pp += dgrams.dgram_cdkl_dk_al(v_pphh, t1, backend = backend)
     
     if sparse:
         H1 += v_ppph_results[0]
@@ -428,7 +428,7 @@ def t2Init(f_pp, f_hh, v_pphh, delta):
 
 
 def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, v_hhhh, sparse = True):
+           v_ppph_results, v_hhhh, sparse = True, backend = 'numpy'):
     """
     iterating t2, factoring out terms that look like g_i^i and g_a^a
 
@@ -463,25 +463,25 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     #Adding together all of the terms in H_ij^ab that doesn't get factored out
     H2 = np.zeros_like(v_pphh)
     H2 += v_pphh
-    H2 += dgrams.dgram_klij_abkl(v_hhhh, t2)
-    H2 += dgrams.dgram_bkcj_acik(v_phph, t2) 
+    H2 += dgrams.dgram_klij_abkl(v_hhhh, t2, backend = backend)
+    H2 += dgrams.dgram_bkcj_acik(v_phph, t2, backend = backend) 
             
-    H2 += dgrams.dgram_bkij_ak(v_phhh, t1) 
+    H2 += dgrams.dgram_bkij_ak(v_phhh, t1, backend = backend) 
             
-    H2 += dgrams.dgram_cdkl_acik_dblj(v_pphh, t2)
-    H2 += dgrams.dgram_cdkl_cdij_abkl(v_pphh, t2)
-    H2 += dgrams.dgram_klij_ak_bl(v_hhhh, t1) 
-    H2 += dgrams.dgram_bkci_ak_cj(v_phph, t1) 
-    H2 += dgrams.dgram_cikl_ck_ablj(v_phhh, t1, t2) 
+    H2 += dgrams.dgram_cdkl_acik_dblj(v_pphh, t2, backend = backend)
+    H2 += dgrams.dgram_cdkl_cdij_abkl(v_pphh, t2, backend = backend)
+    H2 += dgrams.dgram_klij_ak_bl(v_hhhh, t1, backend = backend) 
+    H2 += dgrams.dgram_bkci_ak_cj(v_phph, t1, backend = backend) 
+    H2 += dgrams.dgram_cikl_ck_ablj(v_phhh, t1, t2, backend = backend) 
             
-    H2 += dgrams.dgram_cikl_al_bcjk(v_phhh, t1, t2) 
-    H2 += dgrams.dgram_cjkl_ci_abkl(v_phhh, t1, t2) 
+    H2 += dgrams.dgram_cikl_al_bcjk(v_phhh, t1, t2, backend = backend) 
+    H2 += dgrams.dgram_cjkl_ci_abkl(v_phhh, t1, t2, backend = backend) 
             
-    H2 += dgrams.dgram_cjkl_ci_ak_bl(v_phhh, t1) 
-    H2 += dgrams.dgram_cdkl_ci_dj_abkl(v_pphh, t1, t2) 
-    H2 += dgrams.dgram_cdkl_ak_bl_cdij(v_pphh, t1, t2) 
-    H2 += dgrams.dgram_cdkl_ci_bl_adkj(v_pphh, t1, t2) 
-    H2 += dgrams.dgram_cdkl_ci_ak_dj_bl(v_pphh, t1)
+    H2 += dgrams.dgram_cjkl_ci_ak_bl(v_phhh, t1, backend = backend) 
+    H2 += dgrams.dgram_cdkl_ci_dj_abkl(v_pphh, t1, t2, backend = backend) 
+    H2 += dgrams.dgram_cdkl_ak_bl_cdij(v_pphh, t1, t2, backend = backend) 
+    H2 += dgrams.dgram_cdkl_ci_bl_adkj(v_pphh, t1, t2, backend = backend) 
+    H2 += dgrams.dgram_cdkl_ci_ak_dj_bl(v_pphh, t1, backend = backend)
     
     pnum = len(f_pp)
     hnum = len(f_hh)
@@ -494,19 +494,19 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     X_pp += f_pp
 
     #adding up everything that goes in the factored terms
-    X_pp += dgrams.dgram_cdkl_bdkl(v_pphh, t2)
-    X_hh += dgrams.dgram_cdkl_cdjl(v_pphh, t2)
-    X_pp += dgrams.dgram_ck_bk(f_ph, t1) 
-    X_hh += dgrams.dgram_ck_cj(f_ph, t1) 
-    X_hh += dgrams.dgram_cdlk_cl_dj(v_pphh, t1) 
-    X_pp += dgrams.dgram_cdlk_dk_bl(v_pphh, t1) 
+    X_pp += dgrams.dgram_cdkl_bdkl(v_pphh, t2, backend = backend)
+    X_hh += dgrams.dgram_cdkl_cdjl(v_pphh, t2, backend = backend)
+    X_pp += dgrams.dgram_ck_bk(f_ph, t1, backend = backend) 
+    X_hh += dgrams.dgram_ck_cj(f_ph, t1, backend = backend) 
+    X_hh += dgrams.dgram_cdlk_cl_dj(v_pphh, t1, backend = backend) 
+    X_pp += dgrams.dgram_cdlk_dk_bl(v_pphh, t1, backend = backend) 
 
     if sparse:
         H2 += dgrams.pIJ(v_ppph_results[2])
-        H2 += dgrams.dgram_da_dbij(v_ppph_results[3], t2)
-        H2 += dgrams.dgram_acik_bcjk(v_ppph_results[4], t2)
-        H2 += dgrams.dgram_bijk_ak1(v_ppph_results[5], t1)
-        H2 += dgrams.dgram_bijk_ak2(v_ppph_results[6], t1)
+        H2 += dgrams.dgram_da_dbij(v_ppph_results[3], t2, backend = backend)
+        H2 += dgrams.dgram_acik_bcjk(v_ppph_results[4], t2, backend = backend)
+        H2 += dgrams.dgram_bijk_ak1(v_ppph_results[5], t1, backend = backend)
+        H2 += dgrams.dgram_bijk_ak2(v_ppph_results[6], t1, backend = backend)
 
         dgram_abcd_cdij, dgram_abcd_ci_dj = dgrams.v_pppp_dgrams(v_pppp, t1, t2)
         H2 += 0.5 * dgram_abcd_cdij
@@ -533,7 +533,7 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     return t2
 
 def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 1000, max_diis = 10, 
-                delta = 0, mixing = 0.5, verbose = False, sparse = True, ccs = False): 
+                delta = 0, mixing = 0.5, verbose = False, sparse = True, ccs = False, backend ='numpy'): 
     """
     Solves for the correlation energy of a system using the CCSD equations.
     DIIS credit to Daniel G. A. Smith and Lori A. Burns, and The Psi4NumPy Developers, https://github.com/psi4/psi4numpy
@@ -594,11 +594,11 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             v_ppph_results = v_ppph
         t1 = mixing * t1 + (1. - mixing) * t1Iter(t1, t2, f_ph, f_pp, f_hh,
                                                   v_phph, v_phhh, v_pphh, v_ppph_results,
-                                                  sparse=sparse)
+                                                  sparse=sparse, backend=backend)
         if not ccs:
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
                                                       v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
-                                                      sparse=sparse)
+                                                      sparse=sparse, backend=backend)
 
         energy = ccsd_energy(f_ph,v_pphh, t2, t1)
 
