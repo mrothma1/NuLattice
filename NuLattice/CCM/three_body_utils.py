@@ -2,6 +2,7 @@
 Provides functions for all of the 3 body interactions
 """
 import numpy as np
+import sparse
 
 def get_3NF(part, hole, my3body):
     """
@@ -325,12 +326,12 @@ def get_3NF_tbme(w_pph_pph, w_pph_phh, w_pph_hhh, w_phh_phh, w_phh_hhh, w_hhh_hh
     v_hhhh = np.zeros((hnum, hnum, hnum, hnum)) 
     
     if sparse_pppp:
-        v_pppp = []
+        v_pppp = [[[],[],[],[]],[]]
     else:
         v_pppp = np.zeros((pnum, pnum, pnum, pnum))
         
     if sparse_ppph:
-        v_ppph = []
+        v_ppph = [[[],[],[],[]],[]]
     else:
         v_ppph = np.zeros((pnum, pnum, pnum, hnum))
                 
@@ -338,15 +339,25 @@ def get_3NF_tbme(w_pph_pph, w_pph_phh, w_pph_hhh, w_phh_phh, w_phh_hhh, w_hhh_hh
         [a, b, i, c, d, j, val] = ele
         if i == j:
             if sparse_pppp:
-                v_pppp.append([a, b, c, d, val])
+                v_pppp[0][0].append(a)
+                v_pppp[0][1].append(b)
+                v_pppp[0][2].append(c)
+                v_pppp[0][3].append(d)
+                v_pppp[1].append(val)
+                # v_pppp.append([a, b, c, d, val])
             else:
                 v_pppp[a, b, c, d] += val
        
     for ele in w_pph_phh:
         [a, b, i, c, k, j, val] = ele
         if i == j:
-            if sparse_pppp:
-                v_ppph.append([a, b, c, k, val])
+            if sparse_ppph:
+                v_ppph[0][0].append(a)
+                v_ppph[0][1].append(b)
+                v_ppph[0][2].append(c)
+                v_ppph[0][3].append(k)
+                v_ppph[1].append(val)
+                # v_ppph.append([a, b, c, k, val])
             else:
                 v_ppph[a, b, c, k] += val
 
@@ -369,5 +380,9 @@ def get_3NF_tbme(w_pph_pph, w_pph_phh, w_pph_hhh, w_phh_phh, w_phh_hhh, w_hhh_hh
         [m, n, i, l, k, j, val] = ele
         if i == j:
             v_hhhh[m, n, l, k] += val
-            
+    
+    if sparse_pppp:
+        v_pppp = sparse.COO(v_pppp[0], v_pppp[1], shape=(pnum, pnum, pnum, pnum))
+    if sparse_ppph:
+        v_ppph = sparse.COO(v_ppph[0], v_ppph[1], shape=(pnum, pnum, pnum, hnum))
     return v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh

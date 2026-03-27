@@ -16,6 +16,7 @@ sys.path.append(str(pathlib.Path(__file__).parent / ".." / ".."))
 import NuLattice.CCM.three_body_utils as tbu
 import NuLattice.lattice as lat
 import NuLattice.CCM.ccDgrams_testing as dgrams
+import sparse as sp
 
 def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     """
@@ -120,8 +121,8 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
     vals     = range(pnum)
     lookup_p = dict(zip(part,vals))
     if sparse:
-        v_pppp = []
-        v_ppph = []
+        v_pppp = [[[],[],[],[]],[]]
+        v_ppph = [[[],[],[],[]],[]]
     else:
         v_pppp = np.zeros((pnum,pnum,pnum,pnum),dtype=complex)
         v_ppph = np.zeros((pnum,pnum,pnum,hnum),dtype=complex)
@@ -251,11 +252,18 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
             for i, indx in enumerate(indices):
                 sign = signs[i]
                 if currSparse:
-                    vint.append([indx[0], indx[1], indx[2], indx[3], val * sign_ket * sign_bra * sign])
+                    vint[0][0].append(indx[0])
+                    vint[0][1].append(indx[1])
+                    vint[0][2].append(indx[2])
+                    vint[0][3].append(indx[3])
+                    vint[1].append(val * sign_ket * sign_bra * sign)
+                    # vint.append([indx[0], indx[1], indx[2], indx[3], val * sign_ket * sign_bra * sign])
                 else:
                     vint[indx] =  val * sign_ket * sign_bra * sign
     
-
+    if sparse:
+        v_pppp = sp.COO(v_pppp[0], v_pppp[1], shape=(pnum, pnum, pnum, pnum))
+        v_ppph = sp.COO(v_ppph[0], v_ppph[1], shape=(pnum, pnum, pnum, hnum))
     return v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh
 
 def ccsd_energy(f_ph, v_pphh, t2, t1):
@@ -330,7 +338,7 @@ def t1Init(f_ph, f_pp, f_hh, delta):
     return f_ph / denom
 
 def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, sparse = True, backend='numpy'):
+           v_ppph, backend='numpy'):
     """
     iterating t1 using the CCSD equations
 
@@ -387,13 +395,11 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     X_pp += dgrams.dgram_dckl_dakl(v_pphh, t2, backend = backend)
     X_hh += dgrams.dgram_cdlk_cl_di(v_pphh, t1, backend = backend)
     X_pp += dgrams.dgram_cdkl_dk_al(v_pphh, t1, backend = backend)
-    
-    if sparse:
-        H1 += v_ppph_results[0]
-        X_pp += v_ppph_results[1]
-    else:
-        H1 += - 0.5 * contract('cdak, cdki -> ai', np.conj(v_ppph_results), t2)#6
-        X_pp -= contract('cdak, ck -> ad', np.conj(v_ppph_results), t1) #10
+
+    H1 += dgrams.dgram_cdak_cdki(v_ppph, t2)#6
+
+    X_pp += dgrams.dgram_cdak_ck(v_ppph, t1) #10
+
     
     H1  += contract('ac, ci -> ai', X_pp, t1) + contract('ki, ak -> ai', X_hh, t1)
 
@@ -428,7 +434,7 @@ def t2Init(f_pp, f_hh, v_pphh, delta):
 
 
 def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, v_hhhh, sparse = True, backend = 'numpy'):
+           v_ppph, v_hhhh, backend = 'numpy'):
     """
     iterating t2, factoring out terms that look like g_i^i and g_a^a
 
@@ -501,24 +507,14 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     X_hh += dgrams.dgram_cdlk_cl_dj(v_pphh, t1, backend = backend) 
     X_pp += dgrams.dgram_cdlk_dk_bl(v_pphh, t1, backend = backend) 
 
-    if sparse:
-        H2 += dgrams.pIJ(v_ppph_results[2])
-        H2 += dgrams.dgram_da_dbij(v_ppph_results[3], t2, backend = backend)
-        H2 += dgrams.dgram_acik_bcjk(v_ppph_results[4], t2, backend = backend)
-        H2 += dgrams.dgram_bijk_ak1(v_ppph_results[5], t1, backend = backend)
-        H2 += dgrams.dgram_bijk_ak2(v_ppph_results[6], t1, backend = backend)
 
-        dgram_abcd_cdij, dgram_abcd_ci_dj = dgrams.v_pppp_dgrams(v_pppp, t1, t2)
-        H2 += 0.5 * dgram_abcd_cdij
-        H2 += 0.5 * dgrams.pIJ(dgram_abcd_ci_dj)
-    else:
-        H2 += dgrams.pIJ(contract('abcj, ci -> abij', v_ppph_results, t1))
-        H2 += - dgrams.pAB(contract('cdak, ck, dbij -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy"))
-        H2 += dgrams.pIJ(dgrams.pAB(contract('dcak, di, bcjk -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy")))
-        H2 += 0.5 * dgrams.pAB(contract('cdbk, ak, cdij -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy"))
-        H2 += 0.5 * dgrams.pIJ(dgrams.pAB(contract('cdbk, ci, ak, dj -> abij', np.conj(v_ppph_results), t1, t1, t1, optimize="greedy")))
-        H2 += 0.5 * contract('abcd, cdij -> abij', v_pppp, t2)
-        H2 += 0.5 * dgrams.pIJ(contract('abcd, ci, dj -> abij', v_pppp, t1, t1, optimize="greedy"))
+    H2 += dgrams.dgram_abcj_ci(v_ppph, t1)
+    H2 += dgrams.dgram_cdak_ck_dbij(v_ppph, t1, t2)
+    H2 += dgrams.dgram_dcak_di_bcjk(v_ppph, t1, t2)
+    H2 += dgrams.dgram_cdbk_ak_cdij(v_ppph, t1, t2)
+    H2 += dgrams.dgram_cdbk_ci_ak_dj(v_ppph, t1)
+    H2 += dgrams.dgram_abcd_cdij(v_pppp, t2)
+    H2 += dgrams.dgram_abcd_ci_dj(v_pppp, t1)
 
     H2 += dgrams.pAB(contract('bc, acij -> abij', X_pp, t2)) + dgrams.pIJ(contract('kj, abik -> abij', X_hh, t2))
     
@@ -587,18 +583,12 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     for i in range(maxSteps):
         oldT1 = deepcopy(t1)
         oldT2 = deepcopy(t2)
-                
-        if sparse:
-            v_ppph_results = dgrams.v_ppph_dgrams(v_ppph, t1, t2)
-        else:
-            v_ppph_results = v_ppph
+
         t1 = mixing * t1 + (1. - mixing) * t1Iter(t1, t2, f_ph, f_pp, f_hh,
-                                                  v_phph, v_phhh, v_pphh, v_ppph_results,
-                                                  sparse=sparse, backend=backend)
+                                                  v_phph, v_phhh, v_pphh, v_ppph, backend=backend)
         if not ccs:
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
-                                                      v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
-                                                      sparse=sparse, backend=backend)
+                                                      v_pppp, v_phph, v_phhh, v_pphh, v_ppph, v_hhhh, backend=backend)
 
         energy = ccsd_energy(f_ph,v_pphh, t2, t1)
 

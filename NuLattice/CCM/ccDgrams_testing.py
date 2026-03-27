@@ -10,6 +10,7 @@ __date__      = "2025-07-26"
 import numpy as np
 from opt_einsum import contract
 import opt_einsum as oe
+import sparse
 
 
 def v_ppph_dgrams(v_ppph, t1, t2):
@@ -116,7 +117,7 @@ def dgram_cdkl_ck_dali(v_pphh, t1, t2, backend='numpy'):
 	:return:        result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, ck, dali -> ai', np.shape(v_pphh), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cdkl, ck, dali -> ai', np.shape(v_pphh), np.shape(t1), np.shape(t2), optimize='greedy')
     return expr(np.conj(v_pphh), t1, t2, backend=backend)
 
 
@@ -218,7 +219,7 @@ def dgram_cdlk_cl_di(v_pphh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdlk, cl, di -> ki', np.shape(v_pphh), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('cdlk, cl, di -> ki', np.shape(v_pphh), np.shape(t1), np.shape(t1), optimize='greedy')
     return - 0.5 * expr(np.conj(v_pphh), t1, t1, backend=backend)
 
 
@@ -235,11 +236,37 @@ def dgram_cdkl_dk_al(v_pphh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, dk, al -> ac', np.shape(v_pphh), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('cdkl, dk, al -> ac', np.shape(v_pphh), np.shape(t1), np.shape(t1), optimize='greedy')
     return + 0.5 * expr(np.conj(v_pphh), t1, t1, backend=backend)
 
+def dgram_cdak_cdki(v_ppph, t2):
+    return - 0.5 * contract('cdak, cdki -> ai', np.conj(v_ppph), sparse.COO.from_numpy(t2)).todense()
 
-def pAB(val):
+def dgram_cdak_ck(v_ppph, t1):
+    return - contract('cdak, ck -> ad', np.conj(v_ppph), sparse.COO.from_numpy(t1)).todense()
+
+def dgram_abcj_ci(v_ppph, t1):
+    return pIJ(contract('abcj, ci -> abij', v_ppph, sparse.COO.from_numpy(t1)).todense())
+
+def dgram_cdak_ck_dbij(v_ppph, t1, t2):
+    return - pAB(contract('cdak, ck, dbij -> abij', np.conj(v_ppph), sparse.COO.from_numpy(t1), sparse.COO.from_numpy(t2), optimize="greedy").todense())
+
+def dgram_dcak_di_bcjk(v_ppph, t1, t2):
+    return pIJ(pAB(contract('dcak, di, bcjk -> abij', np.conj(v_ppph), sparse.COO.from_numpy(t1), sparse.COO.from_numpy(t2), optimize="greedy").todense()))
+
+def dgram_cdbk_ak_cdij(v_ppph, t1, t2):
+    return 0.5 * pAB(contract('cdbk, ak, cdij -> abij', np.conj(v_ppph), sparse.COO.from_numpy(t1), sparse.COO.from_numpy(t2), optimize="greedy").todense())
+
+def dgram_cdbk_ci_ak_dj(v_ppph, t1):
+    return 0.5 * pIJ(pAB(contract('cdbk, ci, ak, dj -> abij', np.conj(v_ppph), sparse.COO.from_numpy(t1), sparse.COO.from_numpy(t1), sparse.COO.from_numpy(t1), optimize="greedy").todense()))
+
+def dgram_abcd_cdij(v_pppp, t2):
+    return 0.5 * contract('abcd, cdij -> abij', v_pppp, sparse.COO.from_numpy(t2)).todense()
+
+def dgram_abcd_ci_dj(v_pppp, t1):
+    return 0.5 * pIJ(contract('abcd, ci, dj -> abij', v_pppp, sparse.COO.from_numpy(t1), sparse.COO.from_numpy(t1), optimize="greedy").todense())
+
+def pAB(val,backend='numpy'):
     """
     Permutator for ab
 
@@ -248,9 +275,10 @@ def pAB(val):
 	:return:       val^{ab}_{ij} - val^{ba}_{ij}
     :rtype:         numpy array
     """
-    return val - contract('abij -> baij', val)
+    expr = oe.contract_expression('abij->baij', np.shape(val))
+    return val - expr(val,backend=backend)
 
-def pIJ(val):
+def pIJ(val, backend='numpy'):
     """
     Permutator for ij
 
@@ -259,7 +287,8 @@ def pIJ(val):
 	:return:       val^{ab}_{ij} - val^{ab}_{ji}
     :rtype:         numpy array
     """
-    return val - contract('abij -> abji', val)
+    expr = oe.contract_expression('abij->abji', np.shape(val))
+    return val - expr(val,backend=backend)
 
 def v_pppp_dgrams(v_pppp, t1, t2):
     """
@@ -348,7 +377,7 @@ def dgram_cdkl_acik_dblj(v_pphh, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, acik, dblj -> abij', np.shape(v_pphh), np.shape(t2), np.shape(t2))
+    expr = oe.contract_expression('cdkl, acik, dblj -> abij', np.shape(v_pphh), np.shape(t2), np.shape(t2), optimize='greedy')
     return 0.5 * pIJ(pAB(expr(np.conj(v_pphh), t2, t2, backend=backend)))
 
 def dgram_cdkl_cdij_abkl(v_pphh, t2, backend='numpy'):
@@ -364,7 +393,7 @@ def dgram_cdkl_cdij_abkl(v_pphh, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, cdij, abkl -> abij', np.shape(v_pphh), np.shape(t2), np.shape(t2))
+    expr = oe.contract_expression('cdkl, cdij, abkl -> abij', np.shape(v_pphh), np.shape(t2), np.shape(t2), optimize='greedy')
     return 0.25 * expr(np.conj(v_pphh), t2, t2, backend=backend)
 
 def dgram_klij_ak_bl(v_hhhh, t1, backend='numpy'):
@@ -380,7 +409,7 @@ def dgram_klij_ak_bl(v_hhhh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('klij, ak, bl -> abij', np.shape(v_hhhh), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('klij, ak, bl -> abij', np.shape(v_hhhh), np.shape(t1), np.shape(t1), optimize='greedy')
     return 0.5 * pAB(expr(v_hhhh, t1, t1, backend=backend))
 
 def dgram_bkci_ak_cj(v_phph, t1, backend='numpy'):
@@ -396,7 +425,7 @@ def dgram_bkci_ak_cj(v_phph, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('bkci, ak, cj -> abij', np.shape(v_phph), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('bkci, ak, cj -> abij', np.shape(v_phph), np.shape(t1), np.shape(t1), optimize='greedy')
     return - pAB(pIJ(expr(v_phph, t1, t1, backend=backend)))
 
 def dgram_cikl_ck_ablj(v_phhh, t1, t2, backend='numpy'):
@@ -414,7 +443,7 @@ def dgram_cikl_ck_ablj(v_phhh, t1, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cikl, ck, ablj -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cikl, ck, ablj -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t2), optimize='greedy')
     return - pIJ(expr(np.conj(v_phhh), t1, t2, backend=backend))
 
 def dgram_da_dbij(v_ppph_res, t2, backend='numpy'):
@@ -464,7 +493,7 @@ def dgram_cikl_al_bcjk(v_phhh, t1, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cikl, al, bcjk -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cikl, al, bcjk -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t2), optimize='greedy')
     return - pIJ(pAB(expr(np.conj(v_phhh), t1, t2, backend=backend)))
 
 def dgram_cjkl_ci_abkl(v_phhh, t1, t2, backend='numpy'):
@@ -482,7 +511,7 @@ def dgram_cjkl_ci_abkl(v_phhh, t1, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cjkl, ci, abkl -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cjkl, ci, abkl -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t2), optimize='greedy')
     return 0.5 * pIJ(expr(np.conj(v_phhh), t1, t2, backend=backend))
 
 def dgram_bijk_ak1(v_ppph_res, t1, backend='numpy'):
@@ -530,7 +559,7 @@ def dgram_cjkl_ci_ak_bl(v_phhh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cjkl, ci, ak, bl -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('cjkl, ci, ak, bl -> abij', np.shape(v_phhh), np.shape(t1), np.shape(t1), np.shape(t1), optimize='greedy')
     return 0.5 * pIJ(pAB(expr(np.conj(v_phhh), t1, t1, t1, backend=backend)))
 
 def dgram_cdkl_ci_dj_abkl(v_pphh, t1, t2, backend='numpy'):
@@ -548,7 +577,7 @@ def dgram_cdkl_ci_dj_abkl(v_pphh, t1, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, ci, dj, abkl -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cdkl, ci, dj, abkl -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t2), optimize='greedy')
     return 0.25 * pIJ(expr(np.conj(v_pphh), t1, t1 ,t2, backend=backend))
 
 def dgram_cdkl_ak_bl_cdij(v_pphh, t1, t2, backend='numpy'):
@@ -566,7 +595,7 @@ def dgram_cdkl_ak_bl_cdij(v_pphh, t1, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, ak, bl, cdij -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cdkl, ak, bl, cdij -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t2), optimize='greedy')
     return 0.25 * pAB(expr(np.conj(v_pphh), t1, t1 ,t2, backend=backend))
 
 def dgram_cdkl_ci_bl_adkj(v_pphh, t1, t2, backend='numpy'):
@@ -584,7 +613,7 @@ def dgram_cdkl_ci_bl_adkj(v_pphh, t1, t2, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, ci, bl, adkj -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t2))
+    expr = oe.contract_expression('cdkl, ci, bl, adkj -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t2), optimize='greedy')
     return pIJ(pAB(expr(np.conj(v_pphh), t1, t1, t2, backend=backend)))
 
 def dgram_cdkl_ci_ak_dj_bl(v_pphh, t1, backend='numpy'):
@@ -600,7 +629,7 @@ def dgram_cdkl_ci_ak_dj_bl(v_pphh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdkl, ci, ak, dj, bl -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('cdkl, ci, ak, dj, bl -> abij', np.shape(v_pphh), np.shape(t1), np.shape(t1), np.shape(t1), np.shape(t1), optimize='greedy')
     return 0.25 * pIJ(pAB(expr(np.conj(v_pphh), t1, t1, t1, t1, backend=backend)))
 
 def dgram_cdkl_bdkl(v_pphh, t2, backend='numpy'):
@@ -680,7 +709,7 @@ def dgram_cdlk_cl_dj(v_pphh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdlk, cl, dj -> kj', np.shape(v_pphh), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('cdlk, cl, dj -> kj', np.shape(v_pphh), np.shape(t1), np.shape(t1), optimize='greedy')
     return - expr(np.conj(v_pphh), t1, t1, backend=backend)
 
 def dgram_cdlk_dk_bl(v_pphh, t1, backend='numpy'):
@@ -696,5 +725,5 @@ def dgram_cdlk_dk_bl(v_pphh, t1, backend='numpy'):
 	:return:       result of the contraction
     :rtype:         numpy array
     """
-    expr = oe.contract_expression('cdlk, dk, bl -> bc', np.shape(v_pphh), np.shape(t1), np.shape(t1))
+    expr = oe.contract_expression('cdlk, dk, bl -> bc', np.shape(v_pphh), np.shape(t1), np.shape(t1), optimize='greedy')
     return - expr(np.conj(v_pphh), t1, t1, backend=backend)
