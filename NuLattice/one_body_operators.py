@@ -1,0 +1,664 @@
+"""
+This module provides functions to define the 3D lattice   
+"""
+__authors__   =  ["Thomas Papenbrock, Maxwell Rothman"]
+__credits__   =  ["Thomas Papenbrock, Maxwell Rothman"]
+__copyright__ = "(c) Thomas Papenbrock, Maxwell Rothman" 
+__license__   = "BSD-3-Clause"
+__date__      = "2026-03-27"
+
+import numpy as np
+import scipy.sparse as sparse
+import math
+
+import NuLattice.lattice as lat
+import NuLattice.constants as consts
+
+def list_to_sparse1b(mylist, sparsetype="csr"):
+    """
+    transforms a list of matrix elements of a 1-body operator to a sparse format
+    :param mylist:     the one-body operator
+    :type mylist:      list of lists [[p,q, val, ...] with int p, q, and rael or complex val
+    :param sparsetype: the desired format (only "csr" and "coo" implemented as of now)
+    :type sparsetype:  string (only "csr" and "coo" implemented as of now)
+    :return:           the sparse matrix of mylist
+    :rtype:            scipy.sparse.csr_array or scipy.sparse.coo_array 
+    """
+    row = [item[0] for item in mylist]
+    col = [item[1] for item in mylist]
+    val = [item[2] for item in mylist]
+    if sparsetype == "coo":
+        return sparse.coo_array((val, (row,col)) )
+    else:
+        return sparse.csr_array((val, (row,col)) ) 
+
+def indConv(ind, myL):
+    """
+    Gets x,y,z indices from combined index
+    
+    :param ind: index in lattice, given by x + y * myL + z * myL ^ 2
+    :type ind:  int
+    :param myL: number of lattice sites in each direction
+    :type myL:  int
+    :return:    list of x, y, z
+    :rtype:     list[int]
+    """
+    x = ind % myL
+    y = ((ind - x) // myL) % myL
+    z = ((ind - x) // myL - y) // myL
+    return x, y, z
+
+def tKin(myL, Nk, a_lat, spin=2, isospin=2):
+    """
+    computes 1-body kinetic energy matrix elements.
+    
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param Nk:      number of neighbors along each axis to use(1 for nearest-neighbor, 2 for
+                    next-to-nearest-neighbor, etc)
+    :type Nk:       int
+    :param a_lat:   lattice spacing divided by hbar c
+    :type a_lat:    float
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int    
+    :return:        list of tuples [i, j, value] where i and j are indices in the single-particle 
+                    basis, and value is the value of the matrix element Tij in MeV
+    :rtype:         list[(int, int, float)]
+    """
+    h = -1.0 / 2.0 / (consts.mass*a_lat)
+
+    KK = np.zeros([myL**3, myL**3])
+    cf0 = 0.0
+
+    r = np.arange(myL**3)
+    nx = np.mod(r, myL)
+    ny = np.mod((r - nx) // myL, myL)
+    nz = (r - nx - ny * myL) // (myL**2)
+
+    for k in range(1, Nk + 1):
+        cf = ((-1)**(k + 1) * 2.0 *
+              (math.factorial(Nk) / math.factorial(Nk - k)) /
+              (math.factorial(Nk + k) /math.factorial(Nk)) / k**2 * h)
+        cf0 -= 2 * cf
+
+        rxp = np.mod(nx + k, myL) + ny * myL + nz * myL**2
+        rxm = np.mod(nx - k, myL) + ny * myL + nz * myL**2
+        ryp = nx + np.mod(ny + k, myL) * myL + nz * myL**2
+        rym = nx + np.mod(ny - k, myL) * myL + nz * myL**2
+        rzp = nx + ny * myL + np.mod(nz + k, myL) * myL**2
+        rzm = nx + ny * myL + np.mod(nz - k, myL) * myL**2
+
+        KK[r, rxp] += cf
+        KK[r, rxm] += cf
+        KK[r, ryp] += cf
+        KK[r, rym] += cf
+        KK[r, rzp] += cf
+        KK[r, rzm] += cf
+
+    cf0 *= 3
+    KK[r, r] += cf0
+    ret = []
+    for i in range(myL ** 3):
+        for j in range(myL ** 3):
+            val = KK[i][j]
+            if val == 0:
+                continue
+            indx1, indy1, indz1 = indConv(i, myL)
+            indx2, indy2, indz2 = indConv(j, myL)
+            for tz in range(isospin):
+                for sz in range(spin):
+                    state1 = [indx1, indy1, indz1, tz, sz]
+                    ind1 = lat.state2index(state1, myL, spin, isospin)
+                    state2 = [indx2, indy2, indz2, tz, sz]
+                    ind2 = lat.state2index(state2, myL, spin, isospin)
+                    ret.append([ind1, ind2, val / a_lat])
+    return ret
+
+def nonLocOp(site, myL, sNL, sz, tz,spin=2,isospin=2):
+    """
+    Generates the non-local creation/annihilation operator as definedin equations 3/4
+    
+    :param site:    x,y,z coordinate on the lattice
+    :type site:     [int,int,int]
+    :param myL:     size of lattice
+    :type myL:      int
+    :param sNL:     strength of the non-local smearing
+    :type sNL:      float
+    :param sz:      spin
+    :type sz:       int
+    :param tz:      isospin
+    :type sz:       int
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int
+    :return:        1D list equivalent to the non-local creation/annihilation operator at
+                    a given site
+    :rtype:         numpy list[float]
+    """
+    ret = np.zeros(myL ** 3*spin*isospin)
+    pos = lat.state2index([site[0], site[1], site[2], tz, sz], myL, spin, isospin)
+    rx = lat.state2index([lat.right(site[0], myL), site[1], site[2], tz, sz], myL, spin, isospin)
+    ry = lat.state2index([site[0], lat.right(site[1], myL), site[2], tz, sz], myL, spin, isospin)
+    rz = lat.state2index([site[0], site[1], lat.right(site[2], myL), tz, sz], myL, spin, isospin)
+    lx = lat.state2index([lat.left(site[0], myL), site[1], site[2], tz, sz], myL, spin, isospin)
+    ly = lat.state2index([site[0], lat.left(site[1], myL), site[2], tz, sz], myL, spin, isospin)
+    lz = lat.state2index([site[0], site[1], lat.left(site[2], myL), tz, sz], myL, spin, isospin)
+    ret[pos] += 1
+    ret[rx] += sNL
+    ret[lx] += sNL
+    ret[ry] += sNL
+    ret[ly] += sNL
+    ret[rz] += sNL
+    ret[lz] += sNL
+    return ret
+    
+def rho_op(site, myL, op1b=None, sNL=0, op_fac=1.0, spin=2, isospin=2):
+    """
+    Generates the (non-)local density operator as defined in equation 9
+    
+    :param site:    location in lattice
+    :type site:     [int, int, int]
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param op1b:    one-body operator that acts between a-dagger and a on the indicatyed site
+    :type op1b:     scipy.sparse.csr_array
+    :param sNL:     non-local smearing strength
+    :type sNL:      float
+    :param op_fac:  factor that multiplies the operator
+    :type op_fac:   float
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int  
+    :returns:       (non-)local density operator for the given site
+    :rtype:         scipy.sparse.coo_array()  
+    """
+    dim = myL ** 3 * spin * isospin
+    if op1b is None:
+        op_sparse = op_fac*sparse.csr_array(np.identity(dim))
+    else:
+        op_sparse = op_fac*op1b
+        
+    ret = sparse.csr_array(np.zeros([dim, dim]))
+    for sz in range(spin):
+        for tz in range(isospin):
+            obo = nonLocOp(site, myL, sNL, sz, tz, spin, isospin)
+            matvec = op_sparse @ obo
+            ret += sparse.csr_array(np.outer(obo, matvec))
+    return ret.tocoo()
+   
+
+def lattice_one(lattice, myL, spin=2, isospin=2):
+    """
+    computes elements of the 1-body identity / unit / one operator on the lattice
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    res = []
+    dim = myL**3 * spin * isospin
+    for i in range(dim):
+        res.append([i,i,1.0])
+    return res
+
+def x_k(my_basis,k):
+    """
+    returns the 1-body matrix representation (as a list) of the operator x_k
+    my_basis: list of basis states
+    k:        direction k=1, 2, or 3 
+    return: 1-body matrix representation (as a list) of the operator x_k
+    """
+    x=[]
+    if k < 1 or k > 3:
+        return x
+    for i, state in enumerate(my_basis):
+        pos = state[k-1]
+        x.append([i,i,pos])
+    return x
+
+
+def tau_x(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body isospin-x operator.
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        for tz in range(isospin):
+            tzp = 1-tz
+            val = 0.5
+            for sz in range(spin):
+                state1 = [i, j, k, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                state2 = [i, j, k, tzp, sz]
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx2, indx1, val])
+    #
+    return mat
+
+
+def tau_y(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body isospin-y operator.
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, complex)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        for tz in range(isospin):
+            sgn = np.sign(tz-0.5)
+            tzp = 1-tz
+            val = sgn*0.5j
+            for sz in range(spin):
+                state1 = [i, j, k, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                state2 = [i, j, k, tzp, sz]
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx2, indx1, val])
+    #
+    return mat
+
+
+
+def tau_z(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body isospin-z operator.
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        for tz in range(isospin):
+            val = tz-0.5
+            for sz in range(spin):
+                state = [i, j, k, tz, sz]
+                indx = lat.state2index(state, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx, indx, val])
+    #
+    return mat
+
+def spin_x(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body spin-x operator.
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        for tz in range(isospin):
+            for sz in range(spin):
+                szp = 1-sz
+                val = 0.5
+                state1 = [i, j, k, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                state2 = [i, j, k, tz, szp]
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx2, indx1, val])
+    #
+    return mat
+
+
+def spin_y(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body spin-y operator.
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, complex)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        for tz in range(isospin):
+            for sz in range(spin):
+                sgn = np.sign(sz-0.5)
+                szp = 1-sz
+                val = sgn*0.5j
+                state1 = [i, j, k, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                state2 = [i, j, k, tz, szp]
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx2, indx1, val])
+    #
+    return mat
+def spin_z(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body spin-z operator.
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        for tz in range(isospin):
+            for sz in range(spin):
+                val = sz-0.5
+                state = [i, j, k, tz, sz]
+                indx = lat.state2index(state, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx, indx, val])
+    #
+    return mat
+
+
+def p_x(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body momentum operator p_x. Really: -i times d_x
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        #hop to the right in x
+        r = lat.right(i, myL=myL) #r,j,k
+        val = -0.5j
+        for tz in range(isospin):
+            for sz in range(spin):
+                state1 = [i, j, k, tz, sz]
+                state2 = [r, j, k, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx1, indx2, val])
+                mat.append([indx2, indx1, -val]) #adds a hop-to-the left matrix element
+    #
+    return mat
+
+
+def p_y(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body momentum operator p_y. Really: -i times d_y
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int    
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+            #
+        #hop to the right in y
+        r = lat.right(j, myL=myL) #i,r,k
+        val = -0.5j
+        for tz in range(isospin):
+            for sz in range(spin):
+                state1 = [i, j, k, tz, sz]
+                state2 = [i, r, k, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx1, indx2, val])
+                mat.append([indx2, indx1, -val]) #adds a hop-to-the left matrix element
+    #
+    return mat
+
+
+def p_z(lattice, myL, spin=2, isospin=2):
+    """
+    computes matrix elements for 1-body momentum operator p_z. Really: -i times d_z
+    
+    :param lattice:     list of lattice sites returned by get_lattice
+    :type lattice:      list[(int, int, int)]
+    :param myL:         number of lattice sites in each direction
+    :type myL:          int
+    :param spin:        Optional; number of spin degrees of freedom
+    :type spinL:        int
+    :param isospin:     Optional; number of isospin degrees of freedom
+    :type isospin:      int    
+    :return:            list of tuples [i, j, value] where i and j are indices in the single-particle 
+                        basis, and value is the value of the matrix element Tij
+    :rtype:             list[(int, int, float)]
+    """
+    mat = []
+    for site in lattice:
+        i = site[0]
+        j = site[1]
+        k = site[2]
+        #
+        #hop to the right in z
+        r = lat.right(k, myL=myL) #i,j,r
+        val = -0.5j
+        for tz in range(isospin):
+            for sz in range(spin):
+                state1 = [i, j, k, tz, sz]
+                state2 = [i, j, r, tz, sz]
+                indx1 = lat.state2index(state1, myL=myL, spin=spin, isospin=isospin)
+                indx2 = lat.state2index(state2, myL=myL, spin=spin, isospin=isospin)
+                mat.append([indx1, indx2, val])
+                mat.append([indx2, indx1, -val]) #adds a hop-to-the left matrix element
+    #
+    return mat
+
+
+def relocalize_HF_basis(hnum, hf_umat, my_basis, myL, holes=True):
+    """
+    Provides orthogonal transformation matrix that can be used to replace 
+    the orthogonal transformation matrix hf_umat, consisting of the eigenvectors 
+    of the hf_iter routine, such that hole orbitals and particle orbitals are localized
+    hnum:     number of hole states
+    hf_umat:  orthogonal matrix that is returned by the hf_iter routine
+    my_basis: the single particle basis
+    
+    """
+    def local_bunch(vals, myL):
+        """
+        groups ordered eigenvalues by rounding them to nearest integer
+        vals:  array of values in ascending order
+        myL: number of lattice sites
+        return: list of upper limits sections of values that round to the same number
+        """
+        pos0 = round(vals[0])
+        sections=[]
+        for i, value in enumerate(vals):
+            pos = round(value)
+            if pos > pos0:
+                sections.append(i)
+                pos0=pos
+            if pos == myL-1 or i == len(vals)-1:
+                sections.append(len(vals))
+                break
+        return sections
+    
+    def localize(space_x, space_y, space_z):
+        """
+        does the main work: diagonalize x, then y, finally z among nearly degenerate eigenvalues
+        """
+        xvals, xvecs = np.linalg.eigh(space_x)
+        lo=0
+        hi=0
+        x_sect = local_bunch(xvals, myL)
+        new_xvecs=np.zeros_like(xvecs)
+        xlo=0
+        for xhi in x_sect:
+            xzmat = np.matmul(np.transpose(xvecs[:,xlo:xhi]), np.matmul(space_z,xvecs[:,xlo:xhi]))
+            xymat = np.matmul(np.transpose(xvecs[:,xlo:xhi]), np.matmul(space_y,xvecs[:,xlo:xhi]))
+            xyvals, xyvecs = np.linalg.eigh(xymat)
+            xy_sect = local_bunch(xyvals, myL)
+            ylo=0
+            for yhi in xy_sect:
+                xyzmat = np.matmul(np.transpose(xyvecs[:,ylo:yhi]), np.matmul(xzmat,xyvecs[:,ylo:yhi]))
+                xyzvals, xyzvecs = np.linalg.eigh(xyzmat)
+                xyz_sect = local_bunch(xyzvals, myL)
+                zlo=0
+                for zhi in xyz_sect:
+                    hi += zhi-zlo
+                    transf_vecs = np.matmul(xyvecs[:,ylo:yhi], xyzvecs[:,zlo:zhi])
+                    new_xvecs[:,lo:hi] = np.matmul(xvecs[:,xlo:xhi],transf_vecs)
+                    lo += zhi-zlo
+                    zlo = zhi
+                ylo = yhi
+            xlo = xhi
+        return new_xvecs
+        
+
+    nstat = len(my_basis)
+    result = np.zeros((nstat,nstat))
+    
+    x_op = get_x_matrix_elements(my_basis,1)
+    x_mat = get_1body_matrix(x_op,nstat)
+    y_op = get_x_matrix_elements(my_basis,2)
+    y_mat = get_1body_matrix(y_op,nstat)
+    z_op = get_x_matrix_elements(my_basis,3)
+    z_mat = get_1body_matrix(z_op,nstat)
+    
+    part_space_x = np.matmul(np.transpose(hf_umat[:,hnum:nstat]), 
+                             np.matmul(x_mat, hf_umat[:,hnum:nstat]))
+    part_space_y = np.matmul(np.transpose(hf_umat[:,hnum:nstat]), 
+                             np.matmul(y_mat, hf_umat[:,hnum:nstat]))
+    part_space_z = np.matmul(np.transpose(hf_umat[:,hnum:nstat]), 
+                             np.matmul(z_mat, hf_umat[:,hnum:nstat]))
+    
+    part_vecs = localize(part_space_x, part_space_y, part_space_z)
+    p_transform=np.matmul(hf_umat[:,hnum:nstat], part_vecs) # particle space done 
+    
+    
+    if holes: #also transform hole space as is
+        hole_space_x = np.matmul(np.transpose(hf_umat[:,0:hnum]), 
+                                 np.matmul(x_mat, hf_umat[:,0:hnum]))
+        hole_space_y = np.matmul(np.transpose(hf_umat[:,0:hnum]), 
+                                 np.matmul(y_mat, hf_umat[:,0:hnum]))
+        hole_space_z = np.matmul(np.transpose(hf_umat[:,0:hnum]), 
+                                 np.matmul(z_mat, hf_umat[:,0:hnum]))
+    
+        hole_vecs = localize(hole_space_x, hole_space_y, hole_space_z)
+        h_transform=np.matmul(hf_umat[:,0:hnum], hole_vecs) # hole space done
+        
+    else:
+        h_transform = hf_umat[0:hnum,:]
+
+    result[:,0:hnum] += h_transform
+    result[:,hnum:nstat] += p_transform
+    
+    return result
+
+def check_localization(transform, my_basis):
+    nstat = len(my_basis)
+    x_op = get_x_matrix_elements(my_basis,1)
+    x_mat = get_1body_matrix(x_op,nstat)
+    y_op = get_x_matrix_elements(my_basis,2)
+    y_mat = get_1body_matrix(y_op,nstat)
+    z_op = get_x_matrix_elements(my_basis,3)
+    z_mat = get_1body_matrix(z_op,nstat)
+    
+    print("Number of states coupled (inverse IPR):")
+    for i in range(nstat):
+        vec=transform[:,i]
+        ipr = np.sum(vec**4)
+        print(i, 1.0/ipr)
+        
+    print("expectation values of x, y, z")
+    for i in range(nstat):
+        vec=transform[:,i]
+        xx= np.dot(vec,np.matmul(x_mat,vec))
+        yy= np.dot(vec,np.matmul(y_mat,vec))
+        zz= np.dot(vec,np.matmul(z_mat,vec))
+        print(i, xx, yy, zz)
+    return None
+
