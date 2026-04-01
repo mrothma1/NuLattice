@@ -10,3 +10,4 @@ g_A = 1.287
 m_pi_0 = 134.98 # MeV
 m_pi_c = 139.57 #MeV
 f_pi = 92.2 #MeV
+alpha_EM = 1.0 / 137.04

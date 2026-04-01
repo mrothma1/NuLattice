@@ -10,7 +10,7 @@ import NuLattice.one_body_operators as ob_ops
 
 def f_SL(site1, site2, myL, sL):
     """
-    Calculates the local smearing function defined by equation 14
+    Calculates the local smearing function at two points with strength sL
     
     :param site1:   first site on the lattice
     :type site1:    (int, int, int)
@@ -32,12 +32,14 @@ def f_SL(site1, site2, myL, sL):
         return sL
     return 0
 
-def rho_sq_NO(rho_n, mult, max_mem = 0):
+def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
     """
-    Computes the density squared and normal ordered at a lattice site n
+    Multiplies the given density operators normal orders the product
     
-    :param rho_n:   Array storing the density at lattice site n
-    :type rho_n:    scipy.sparse.coo_array
+    :param rho_1:   Array of first density operator
+    :type rho_1:    scipy.sparse.coo_array
+    :param rho_2:   Array of second density operator
+    :type rho_2:    scipy.sparse.coo_array
     :param mult:    Factor to scale the calculation by
     :type mult:     float
     :param max_mem: Optional; Maximum memory size for the value array
@@ -51,10 +53,10 @@ def rho_sq_NO(rho_n, mult, max_mem = 0):
     tmp_col = []
     tmp_row = []
     tmp_val = []   
-    dim = rho_n.shape[0]
+    dim = rho_1.shape[0]
     ret = sparse.csr_array((dim ** 2, dim ** 2))    
-    for a, c, v in zip(rho_n.row, rho_n.col, rho_n.data):
-        for b, d, w in zip(rho_n.row, rho_n.col, rho_n.data):                
+    for a, c, v in zip(rho_1.row, rho_1.col, rho_1.data):
+        for b, d, w in zip(rho_2.row, rho_2.col, rho_2.data):                
             matele = mult * v * w
             if a < b and c < d:
                 tmp_col.append(a + b * dim)
@@ -72,9 +74,9 @@ def rho_sq_NO(rho_n, mult, max_mem = 0):
 
     return ret + sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 2, dim ** 2))
 
-def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, verbose = False, max_threads = None, max_mem = 0):
+def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, isospin = 2, verbose = False, max_threads = None, max_mem = 0):
     """
-    Generates the leading-order short-range interaction defined in equation 13
+    Generates a short range two body interaction of the form sum_n :rho(n):^2 where rho is a smeared density
     
     :param lattice: list of lattice sites returned by lattice.get_lattice
     :type lattice:  list[(int, int, int)] 
@@ -84,10 +86,13 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, v
     :type sL:       float
     :param sNL:     non-local smearing strength
     :type sNL:      float
-    :param c0:      strength of the short range interaction
+    :param c0:      strength of the interaction
     :type c0:       float
-    :param a_lat: lattice spacing divided by hbar c
-    :type a_lat: float
+    :param a_lat:   lattice spacing divided by hbar c
+    :type a_lat:    float
+    :param op1b:    Optional; one body operator used to generate rho in the form 
+                    a^dagger [op1b] a. If None, then the identity operator is used
+    :type op1b:     scipy.sparse.csr_array()
     :param spin:    Optional; number of spin degrees of freedom
     :type spin:     int
     :param isospin: Optional; number of isospin degrees of freedom
@@ -101,32 +106,35 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, spin = 2, isospin = 2, v
                     indices correspond to i + j * dim
     :rtype:         scipy.sparse.csr_array()
     """
-    #list of density matrices
-    rhos = []
+    rho_n = []
     if verbose:
         print('Generating Densities...',end='')
     for site in lattice:
-        rhos.append(ob_ops.rho_op(site, myL, sNL=sNL, spin=spin, isospin = isospin))
+        rho_n.append(ob_ops.rho_op(site, myL, op1b=op1b, sNL=sNL, spin=spin, isospin = isospin))
     if verbose:
-        print('Done\nGenerating rho * f_SL...',end='')
+        print('Done')
 
     dim  = myL **3 * spin * isospin
-    #List of sum_n rho(n)f_SL(m)
-    rho_fsl = []
-    for site1 in lattice:
-        tmp = sparse.csr_array(np.zeros([dim, dim]))
-        for site2 in lattice:
-            pos = site2[0] * myL ** 2 + site2[1] * myL + site2[2]
-            scale = f_SL(site1, site2, myL, sL)
-            if scale != 0:
-                tmp += rhos[pos] * scale
-        rho_fsl.append(tmp.tocoo())
-    if verbose:
-        print('Done\nGenerating Interaction...',end='')
+    if sL != 0:
+        print('Performing Local Smearing...',end='')
+        rho_smeared = []
+        for site1 in lattice:
+            tmp = sparse.csr_array(np.zeros([dim, dim]))
+            for site2 in lattice:
+                pos = site2[0] * myL ** 2 + site2[1] * myL + site2[2]
+                scale = f_SL(site1, site2, myL, sL)
+                if scale != 0:
+                    tmp += rho_n[pos] * scale
+            rho_smeared.append(tmp.tocoo())
+        if verbose:
+            print('Done')
+    else:
+        rho_smeared = rho_n
+    print('Generating Interaction...',end='')
     ret = sparse.csr_array((dim ** 2, dim ** 2))
     with ProcessPoolExecutor(max_workers=max_threads) as executor:
-        size = len(rho_fsl)
-        for val in executor.map(rho_sq_NO, rho_fsl, [c0 / a_lat] * size, [max_mem] * size):
+        size = len(rho_smeared)
+        for val in executor.map(rho_mult_NO, rho_smeared, rho_smeared, [c0 / a_lat] * size, [max_mem] * size):
             ret += val
     if verbose:
         print('Interaction Generated')
@@ -273,6 +281,65 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
         print('Interaction Generated')
 
     return sparse_full_ope
+
+def coulomb_pot(lattice, myL, a_lat, spin = 2, isospin = 2, verbose = False,max_threads= None, max_mem=0):
+    """
+    Creates the coulomb potential
+
+    :param lattice: list of lattice sites returned by lattice.get_lattice
+    :type lattice:  list[(int, int, int)] 
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param a_lat:   lattice spacing divided by hbar c
+    :type a_lat:    float
+    :type op1b:     scipy.sparse.csr_array()
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int  
+    :param verbose: Optional; whether or not to print progress during calculation
+    :type verbose:  bool
+    :param max_mem: maximum memory size for the temporary float array to get to before compressing it into a scipy.sparse array
+    :type max_mem:  float
+    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV, for dim=spin*isospin*L^3,
+                    the row indicies correspond to a + b * dim + c and column 
+                    indices correspond to i + j * dim
+    :rtype:         scipy.sparse.csr_array()
+    """
+    rho_n = []
+    if verbose:
+        print('Generating Densities...',end='')
+    tau_3 = 2.0 * ob_ops.list_to_sparse1b(ob_ops.tau_z(lattice, myL))
+    for site in lattice:
+        rho_n.append(ob_ops.rho_op(site, myL, sNL=0, spin=spin, isospin = isospin)-ob_ops.rho_op(site, myL, sNL=0, op1b = tau_3,spin=spin, isospin = isospin))
+    if verbose:
+        print('Done\nGenerating rho / d...',end='')
+
+    dim  = myL **3 * spin * isospin
+    rho_over_d = []
+    for site1 in lattice:
+        tmp = sparse.csr_array(np.zeros([dim, dim]))
+        for site2 in lattice:
+            pos = site2[0] * myL ** 2 + site2[1] * myL + site2[2]
+            if site1 == site2:
+                scale = 2.0
+            else:
+                dist_sq = ((site1[0]- site2[0] + myL // 2) % myL - myL // 2) ** 2 + ((site1[1]- site2[1] + myL // 2) % myL - myL // 2) ** 2 + ((site1[2]- site2[2] + myL // 2) % myL - myL // 2) ** 2
+                scale = np.sqrt(dist_sq)
+            if scale != 0:
+                tmp += rho_n[pos] * scale
+        rho_over_d.append(tmp.tocoo())
+    if verbose:
+        print('Done\nGenerating Interaction...',end='')
+    ret = sparse.csr_array((dim ** 2, dim ** 2))
+    with ProcessPoolExecutor(max_workers=max_threads) as executor:
+        size = len(rho_n)
+        for val in executor.map(rho_mult_NO, rho_over_d, rho_n, [-consts.alpha_EM / a_lat] * size, [max_mem] * size):
+            ret += val
+    if verbose:
+        print('Interaction Generated')
+
+    return ret
 
 def sparse_to_list_2body(sparse_int, myL, spin=2, isospin=2):
     """
