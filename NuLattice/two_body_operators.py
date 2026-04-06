@@ -27,8 +27,10 @@ def f_SL(site1, site2, myL, sL):
         return 1
     i1, j1, k1 = site1
     i2, j2, k2 = site2
-    dist = ((i1 - i2 + myL // 2) % myL - myL // 2) ** 2 + ((j1 - j2 + myL // 2) % myL - myL // 2) ** 2 + ((k1 - k2 + myL // 2) % myL - myL // 2) ** 2
-    if dist== 1:
+    dist_sq = (((i1 - i2 + myL // 2) % myL - myL // 2) ** 2 
+            + ((j1 - j2 + myL // 2) % myL - myL // 2) ** 2 
+            + ((k1 - k2 + myL // 2) % myL - myL // 2) ** 2)
+    if dist_sq == 1:
         return sL
     return 0
 
@@ -46,8 +48,8 @@ def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
                     to get to before compressing into a sparse format.
                     If left as 0, no limit to the memory will be set
     :type max_mem:  int
-    :returns:       The density operator squared and normal ordered, for
-                    V^{ij}_{kl}, it only stores i<j and k<l
+    :returns:       The density operators multilpied and normal ordered,
+                    for V^{ij}_{kl}, it only stores i<j and k<l
     :rtype:         scipy.sparse.csr_array
     """
     tmp_col = []
@@ -74,7 +76,7 @@ def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
 
     return ret + sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 2, dim ** 2))
 
-def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, isospin = 2, verbose = False, max_threads = None, max_mem = 0):
+def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, isospin = 2, verbose = False, max_mem = 0):
     """
     Generates a short range two body interaction of the form sum_n :rho(n):^2 where rho is a smeared density
     
@@ -99,11 +101,12 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, i
     :type isospin:  int  
     :param verbose: Optional; whether or not to print progress during calculation
     :type verbose:  bool
-    :param max_mem: maximum memory size for the temporary float array to get to before compressing it into a scipy.sparse array
+    :param max_mem: maximum memory size for the temporary float array to get to before 
+                    compressing it into a scipy.sparse array
     :type max_mem:  float
-    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV, for dim=spin*isospin*L^3,
-                    the row indicies correspond to a + b * dim + c and column 
-                    indices correspond to i + j * dim
+    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV, 
+                    for dim=spin*isospin*L^3, the row indicies correspond
+                    to a + b * dim + c and column indices correspond to i + j * dim
     :rtype:         scipy.sparse.csr_array()
     """
     rho_n = []
@@ -116,7 +119,8 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, i
 
     dim  = myL **3 * spin * isospin
     if sL != 0:
-        print('Performing Local Smearing...',end='')
+        if verbose:
+            print('Performing Local Smearing...',end='')
         rho_smeared = []
         for site1 in lattice:
             tmp = sparse.csr_array(np.zeros([dim, dim]))
@@ -130,9 +134,10 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, i
             print('Done')
     else:
         rho_smeared = rho_n
-    print('Generating Interaction...',end='')
+    if verbose:
+        print('Generating Interaction...',end='')
     ret = sparse.csr_array((dim ** 2, dim ** 2))
-    with ProcessPoolExecutor(max_workers=max_threads) as executor:
+    with ProcessPoolExecutor() as executor:
         size = len(rho_smeared)
         for val in executor.map(rho_mult_NO, rho_smeared, rho_smeared, [c0 / a_lat] * size, [max_mem] * size):
             ret += val
@@ -143,7 +148,7 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, i
 
 def f_SS(myL, bpi, a_lat):
     """
-    f_S'S function as defined in equation 16
+    f_S'S function to be used in one pion exchange
     
     :param myL:     number of lattice sites in each direction
     :type myL:      int
@@ -187,11 +192,12 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
     :type verbose:  bool
     :param mult:    Optional; scale factor to multiply potential by
     :type mult:     float
-    :param max_mem: maximum memory size for the temporary float array to get to before compressing it into a scipy.sparse array
+    :param max_mem: maximum memory size for the temporary float array to get to 
+                    before compressing it into a scipy.sparse array
     :type max_mem:  float
-    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV with the row 
-                    indicies corresponding to a + b * 4*L^3 and column 
-                    indices corresponding to i + j * 4*L^3
+    :return:        A sparse csr_array representing V^{ab}_{ij} in MeV with the 
+                    row indicies corresponding to a + b * 4*L^3 and 
+                    column indices corresponding to i + j * 4*L^3
     :rtype:         scipy.sparse.csr_array()
     """
     if verbose:
@@ -202,26 +208,19 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
     if verbose:
         print('Done\nCalculating Densities...', end='')
     dens = [None] * myL ** 3
+    sp_ops = [ob_ops.list_to_sparse1b(ob_ops.spin_x(lattice, myL)), 
+            ob_ops.list_to_sparse1b(ob_ops.spin_y(lattice, myL)), 
+            ob_ops.list_to_sparse1b(ob_ops.spin_z(lattice, myL))]
+    iso_ops = [ob_ops.list_to_sparse1b(ob_ops.tau_x(lattice, myL)), 
+           ob_ops.list_to_sparse1b(ob_ops.tau_y(lattice, myL)), 
+           ob_ops.list_to_sparse1b(ob_ops.tau_z(lattice, myL))]
     for site in lattice:
         rho_sp = [None] * 3
         for sp in range(3):
             rho_sp_iso = [None] * 3
-            if sp == 0:
-                sp_op = ob_ops.spin_x(lattice, myL, spin=2, isospin=2)
-            if sp == 1:
-                sp_op = ob_ops.spin_y(lattice, myL, spin=2, isospin=2)
-            if sp == 2:
-                sp_op = ob_ops.spin_z(lattice, myL, spin=2, isospin=2)
-
             for iso in range(3):
-                if iso == 0:
-                    iso_op = ob_ops.tau_x(lattice, myL, spin=2, isospin=2)
-                if iso == 1:
-                    iso_op = ob_ops.tau_y(lattice, myL, spin=2, isospin=2)
-                if iso == 2:
-                    iso_op = ob_ops.tau_z(lattice, myL, spin=2, isospin=2)
-                op1b = ob_ops.list_to_sparse1b(sp_op) @ ob_ops.list_to_sparse1b(iso_op)
-                rho_sp_iso[iso] =ob_ops.rho_op(site, myL, op1b,op_fac=4.0, spin=2, isospin=2)
+                op1b = sp_ops[sp] @ iso_ops[iso]
+                rho_sp_iso[iso] =ob_ops.rho_op(site, myL, op1b,op_fac = 4.0, spin=2, isospin=2)
             rho_sp[sp] = rho_sp_iso
         loc = lat.site2index(site, myL)
         dens[loc] = rho_sp
@@ -262,7 +261,7 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
                     tmp_col.append(a + b * dim)
                     tmp_row.append(d + c * dim)
                     tmp_val.append(-matele)
-                if max_mem != 0 and sys.getsizeof(tmp_val) >= 1e8:
+                if max_mem != 0 and sys.getsizeof(tmp_val) > max_mem:
                     if verbose:
                         print(f'Compressing interaction...',end='')
                     sparse_full_ope += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim * dim, dim * dim))
@@ -282,7 +281,7 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
 
     return sparse_full_ope
 
-def coulomb_pot(lattice, myL, a_lat, spin = 2, isospin = 2, verbose = False,max_threads= None, max_mem=0):
+def coulomb_pot(lattice, myL, a_lat, spin = 2, isospin = 2, verbose = False, max_mem=0):
     """
     Creates the coulomb potential
 
@@ -292,7 +291,6 @@ def coulomb_pot(lattice, myL, a_lat, spin = 2, isospin = 2, verbose = False,max_
     :type myL:      int
     :param a_lat:   lattice spacing divided by hbar c
     :type a_lat:    float
-    :type op1b:     scipy.sparse.csr_array()
     :param spin:    Optional; number of spin degrees of freedom
     :type spin:     int
     :param isospin: Optional; number of isospin degrees of freedom
@@ -311,9 +309,9 @@ def coulomb_pot(lattice, myL, a_lat, spin = 2, isospin = 2, verbose = False,max_
         print('Generating Densities...',end='')
     tau_3 = 2.0 * ob_ops.list_to_sparse1b(ob_ops.tau_z(lattice, myL))
     for site in lattice:
-        rho_n.append(ob_ops.rho_op(site, myL, sNL=0, spin=spin, isospin = isospin)-ob_ops.rho_op(site, myL, sNL=0, op1b = tau_3,spin=spin, isospin = isospin))
+        rho_n.append((ob_ops.rho_op(site, myL, sNL=0, spin=spin, isospin = isospin)-ob_ops.rho_op(site, myL, sNL=0, op1b = tau_3,spin=spin, isospin = isospin)).tocoo())
     if verbose:
-        print('Done\nGenerating rho / d...',end='')
+        print('Done\nGenerating rho(n) / d(n-n\')...',end='')
 
     dim  = myL **3 * spin * isospin
     rho_over_d = []
@@ -325,16 +323,16 @@ def coulomb_pot(lattice, myL, a_lat, spin = 2, isospin = 2, verbose = False,max_
                 scale = 2.0
             else:
                 dist_sq = ((site1[0]- site2[0] + myL // 2) % myL - myL // 2) ** 2 + ((site1[1]- site2[1] + myL // 2) % myL - myL // 2) ** 2 + ((site1[2]- site2[2] + myL // 2) % myL - myL // 2) ** 2
-                scale = np.sqrt(dist_sq)
+                scale = 1 / np.sqrt(dist_sq)
             if scale != 0:
                 tmp += rho_n[pos] * scale
         rho_over_d.append(tmp.tocoo())
     if verbose:
         print('Done\nGenerating Interaction...',end='')
     ret = sparse.csr_array((dim ** 2, dim ** 2))
-    with ProcessPoolExecutor(max_workers=max_threads) as executor:
+    with ProcessPoolExecutor() as executor:
         size = len(rho_n)
-        for val in executor.map(rho_mult_NO, rho_over_d, rho_n, [-consts.alpha_EM / a_lat] * size, [max_mem] * size):
+        for val in executor.map(rho_mult_NO, rho_over_d, rho_n, [consts.alpha_EM / a_lat] * size, [max_mem] * size):
             ret += val
     if verbose:
         print('Interaction Generated')
