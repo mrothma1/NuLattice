@@ -9,23 +9,25 @@ __date__      = "2025-07-26"
 
 import numpy as np
 from opt_einsum import contract
+#from numba import njit
 
-def get_1body_matrix(myTkin,nstat):
+def get_1body_matrix(myTkin,nstat,dtype=float):
     """
     takes the list of one-body matrix elements and turns it into a square matrix
     
     :param nstat:  dimension of matrix, i.e. the number of 1-body states
     :type nstat:   int
+    :param dtype:  data type of returned object
+    :type dtype:   numpy.dtype, i.e. np.float64 or float or np.complex128 or complex
     :param myTkin: list of one-body matrix elements [[p1,q1,value1], [p2,q2,value2], ...]
     :type myTkin:  list[list[int,int, float]]
     :return:       nstat x nstat matrix of the list of matrix elements
     :rtype:        numpy.array((:,:), dtype=float)
     """
-    op1 = np.zeros((nstat,nstat))
+    op1 = np.zeros((nstat,nstat),dtype=dtype)
     for [a, b, val] in myTkin:
         op1[a,b]=val
     return op1
-
 
 def contract_2nf(v2,dens):
     """
@@ -39,15 +41,15 @@ def contract_2nf(v2,dens):
     :rtype:      numpy.array((:,:), dtype=float)
     """
     res = np.zeros_like(dens)
-    for mat_ele in v2:
-        [a, b, c, d, val] = mat_ele
+    num_ele = len(v2)
+    for i in range(num_ele):
+        [a, b, c, d, val] = v2[i]
         
         res[a,c] += val*dens[b,d] #1
         res[b,c] -= val*dens[a,d] #P(ab)
         res[a,d] -= val*dens[b,c] #P(cd)
         res[b,d] += val*dens[a,c] #P(ab)P(cd) 
     return res
-
 
 def contract_3nf(w3,dens):
     """
@@ -102,7 +104,80 @@ def contract_3nf(w3,dens):
     return res
 
 
-def make_HF_ham(op1,op2,op3,dens):
+def contract_3nf_new(w3,dens):
+    """
+    takes list of three-body matrix elements and contracts them with the density to get a one-body operator
+
+    :param w3:   list of two-body matrix elements [p,q,r,s,value] 
+    :type w3:    list[list[int,int,int,int,int,int, float]]
+    :param dens: square density matrix
+    :type dens:  numpy.array((:,:), dtype=float)
+    :return:     one-body operator of the same shape as the density matrix dens
+    :rtype:      numpy.array((:,:), dtype=float)
+    """
+    data_type=dens.dtype
+    res = np.zeros_like(dens)
+    for mat_ele in waa:  # we need all antisymmetric combinations of the ket and bra single-particle states
+        [a0, a1, a2, b0, b1, b2, val] = mat_ele
+        
+        aa=[a0,a1,a2]
+        bb=[b0,b1,b2]
+        fact2=2
+
+        for i, a in aa:
+            aa_cp = aa.copy()
+            del aa_cp[i]
+            aa7=tuple(aa_cp)
+            asgn=(-1)**i
+            for j, b in bb:
+                bb_cp = bb.copy()
+                del bb_cp[j]
+                bb7=tuple(bb_cp)
+                bsgn=(-1)**j
+                ddmat=dens[aa7,bb7] #python tuple magic
+
+                res[a,b] += val*fact2*asgn*bsgn*np.linalg.det(ddmat)
+
+    return res
+
+
+def contract_2alpha(waa,dens):
+    """
+    takes list of three-body matrix elements and contracts them with the density to get a one-body operator
+
+    :param w3:   list of two-body matrix elements [p,q,r,s,value] 
+    :type w3:    list[list[int,int,int,int,int,int, float]]
+    :param dens: square density matrix
+    :type dens:  numpy.array((:,:), dtype=float)
+    :return:     one-body operator of the same shape as the density matrix dens
+    :rtype:      numpy.array((:,:), dtype=float)
+    """
+    data_type=dens.dtype
+    res = np.zeros_like(dens)
+    for mat_ele in waa:  # we need all antisymmetric combinations of the ket and bra single-particle states
+        [a0, a1, a2, a3, a4, a5, a6, a7, b0, b1, b2, b3, b4, b5, b6, b7, val] = mat_ele
+        aa=[a0,a1,a2,a3,a4,a5,a6,a7]
+        bb=[b0,b1,b2,b3,b4,b5,b6,b7]
+
+        for i, a in enumerate(aa):
+            aa_cp = aa.copy()
+            del aa_cp[i]
+            aa7=tuple(aa_cp)
+            asgn=(-1)**i
+            for j, b in enumerate(bb):
+                bb_cp = bb.copy()
+                del bb_cp[j]
+                bb7=tuple(bb_cp)
+                bsgn=(-1)**j
+                
+                ddmat=dens[np.ix_(aa7,bb7)] #python tuple magic
+                
+                res[a,b] += val*asgn*bsgn*np.linalg.det(ddmat)
+
+    return res
+
+
+def make_HF_ham(op1,op2,op3,dens,op_alpha=None):
     """
     takes Hamiltonian consisting of one-body operator op1, two-body operator op2,
     and three-body operator op3, and the density matrix and returns the Hartree-Fock Hamiltonian.
@@ -119,29 +194,35 @@ def make_HF_ham(op1,op2,op3,dens):
     :rtype:      numpy.array((:,:), dtype=float)
     """
     nstat = len(dens)
-    hf_op = get_1body_matrix(op1,nstat)
+    denstype=dens.dtype
+    hf_op = get_1body_matrix(op1,nstat).astype(denstype)
     hf_op += contract_2nf(op2,dens)
     hf_op += 0.5*contract_3nf(op3,dens)
+    if op_alpha is not None:
+        fac7=5040.0
+        hf_op += contract_2alpha(op_alpha,dens)*fac7
     return hf_op
 
-def init_density(nstat,hole):
+def init_density(nstat,hole,dtype=float):
     """
     creates a density matrix of dimension nstat x nstat given the hole information
 
     :param nstat: dimension of single-particle basis
     :type nstat:  int
+    :param dtype: data type of returned object
+    :type dtype:  numpy.dtype, i.e. np.float64 or float or np.complex128 or complex
     :param hole:  tuple of occupied single-particle states, as numbers from 0 ... A-1
     :type hole:   tuple(int, int, ... )
     :return:      density matrix where hole states are occupied (1) and all others not (0)
     :rtype:       numpy.array((nstat,nstat), dtype = float)
     """
-    dens = np.zeros((nstat,nstat))
+    dens = np.zeros((nstat,nstat),dtype=dtype)
     for i in hole:
         dens[i,i] = 1.0
     return dens
 
 
-def HF_energy(op1, op2, op3, dens):
+def HF_energy(op1, op2, op3, dens, op_alpha=None):
     """
     Computes the Hartree-Fock energy for a given density dens and Hamiltonian consisting
     of one-body term op1, two-body term op2, and three-body term op3
@@ -158,14 +239,18 @@ def HF_energy(op1, op2, op3, dens):
     :rtype:      float
     """
     nstat = len(dens)
-    dum = get_1body_matrix(op1,nstat)
+    data_type=dens.dtype
+    dum = get_1body_matrix(op1,nstat,dtype=data_type)
     dum += 0.5*contract_2nf(op2,dens)
     dum += (1.0/6.0)*contract_3nf(op3,dens)
+    if op_alpha is not None:
+        fac8 = 40320.0
+        dum += contract_2alpha(op_alpha,dens)/fac8
     erg = contract("ij,ji",dum,dens)
-    return erg
+    return np.real_if_close(erg)
 
 
-def HF_iter(op1, op2, op3, dens, mix=0.5):
+def HF_iter(op1, op2, op3, dens, op_alpha=None, mix=0.5):
     """
     Performs one iteration of the Hartree-Fock procedure
 
@@ -184,15 +269,15 @@ def HF_iter(op1, op2, op3, dens, mix=0.5):
                  the HF Hamiltonian
     :rtype:      float, numpy.array((:,:), dtype=float), numpy.array((:,:), dtype=float)
     """
-    npart=round(np.trace(dens)) # rounds to nearest integer
-    erg = HF_energy(op1, op2, op3, dens)
-    hf = make_HF_ham(op1, op2, op3, dens)
+    npart=round(np.real(np.trace(dens))) # rounds to nearest integer
+    erg = HF_energy(op1, op2, op3, dens, op_alpha=op_alpha)
+    hf = make_HF_ham(op1, op2, op3, dens, op_alpha=op_alpha)
     vals, vecs = np.linalg.eigh(hf)
-    new_dens=contract("pi,qi->pq", vecs[:,0:npart], vecs[:,0:npart])
+    new_dens=contract("pi,qi->pq", vecs[:,0:npart], np.conjugate(vecs[:,0:npart]) )
     res_dens = mix*new_dens + (1.0-mix)*dens
     return erg, res_dens, vecs
 
-def solve_HF(op1, op2, op3, dens, mix=0.5, eps=1.e-8, max_iter=100, verbose=False):
+def solve_HF(op1, op2, op3, dens, op_alpha=None, mix=0.5, eps=1.e-8, max_iter=100, verbose=False):
     """
     Solve the Hartree-Fock problem
 
@@ -216,9 +301,9 @@ def solve_HF(op1, op2, op3, dens, mix=0.5, eps=1.e-8, max_iter=100, verbose=Fals
     """
     converged = False
     my_dens=dens.copy()
-    erg0 = HF_energy(op1, op2, op3, my_dens)
+    erg0 = HF_energy(op1, op2, op3, my_dens, op_alpha=op_alpha)
     for i in range(max_iter):
-        erg, new_dens, vecs = HF_iter(op1, op2, op3, my_dens, mix)
+        erg, new_dens, vecs = HF_iter(op1, op2, op3, my_dens, op_alpha=op_alpha, mix=mix)
         diff = np.abs(erg-erg0)
         diff_dens = np.sum(np.abs(new_dens-my_dens))
         if verbose:
