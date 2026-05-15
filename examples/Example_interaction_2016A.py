@@ -15,11 +15,13 @@ if __name__ == '__main__':
     bpi = 0.7
     verbose = True
     v_OPE = tbops.onePionEx(thisL, bpi, a, lattice, verbose=verbose, g_A=nleftConsts.g_A, f_pi = nleftConsts.f_pi, m_pi_0=nleftConsts.m_pi_0)
-    sNL = 0.08
-    sL = 0.08
-    c0 = -0.185 / a
-
-    v_0=tbops.shortRangeV_2body(lattice, thisL, sL, sNL, c0, verbose=verbose)
-
-    mycontact = tbops.sparse_to_list_2body(v_0+v_OPE, thisL)
+    cNL = -0.2268 / a
+    sNL = 0.077
+    cINL = 0.02184 / a
+    sL = 0
+    v_NL=tbops.shortRangeV_2body(lattice, thisL, sL, sNL, cNL, verbose=verbose)
+    iso_ops = [obops.tau_x(lattice, thisL), obops.tau_y(lattice, thisL), obops.tau_z(lattice, thisL)]
+    for op in iso_ops:
+        v_NL += tbops.shortRangeV_2body(lattice, thisL, sL, sNL, cINL, verbose = verbose, op1b = obops.list_to_sparse1b(op))
+    mycontact = tbops.sparse_to_list_2body(v_NL+v_OPE, thisL)
     print("number of matrix elements from two-body contacts", len(mycontact))
