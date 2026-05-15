@@ -10,7 +10,7 @@ __date__      = "2025-07-26"
 import numpy as np
 from opt_einsum import contract
 
-def v_ppph_dgrams(v_ppph, t1, t2):
+def v_ppph_dgrams(v_ppph, t1, t2, dtype = None):
     """
     Calculates all 6 of the diagrams that use v_pppp using the fact that it is sparse
 
@@ -20,18 +20,20 @@ def v_ppph_dgrams(v_ppph, t1, t2):
     :type t1:       numpy array
     :param t2:      T2 matrix t_{ij}^{ab}
     :type t2:       numpy array
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:        The result of the 6 diagrams that contribute to t1 and t2
     :rtype:         list[numpy array]
     """
     pnum = np.shape(t1)[0]
     hnum = np.shape(t1)[1]
-    ret0 = np.zeros((pnum, hnum),dtype=complex)
-    ret1 = np.zeros((pnum, pnum),dtype=complex)
-    ret2 = np.zeros((pnum, pnum, hnum, hnum),dtype=complex)
-    ret3 = np.zeros((pnum, pnum),dtype=complex)
-    ret4 = np.zeros((pnum, pnum, hnum, hnum),dtype=complex)
-    ret5 = np.zeros((pnum, hnum, hnum, hnum),dtype=complex)
-    ret6 = np.zeros((pnum, hnum, hnum, hnum),dtype=complex)
+    ret0 = np.zeros((pnum, hnum),dtype=dtype)
+    ret1 = np.zeros((pnum, pnum),dtype=dtype)
+    ret2 = np.zeros((pnum, pnum, hnum, hnum),dtype=dtype)
+    ret3 = np.zeros((pnum, pnum),dtype=dtype)
+    ret4 = np.zeros((pnum, pnum, hnum, hnum),dtype=dtype)
+    ret5 = np.zeros((pnum, hnum, hnum, hnum),dtype=dtype)
+    ret6 = np.zeros((pnum, hnum, hnum, hnum),dtype=dtype)
     doubleT1 = contract('ci, dj ->cdij', t1, t1)
     for vals in v_ppph:
         c, d, a, k, v = vals
@@ -214,7 +216,7 @@ def pIJ(val):
     """
     return val - contract('abij -> abji', val)
 
-def v_pppp_dgrams(v_pppp, t1, t2):
+def v_pppp_dgrams(v_pppp, t1, t2, dtype = None):
     """
     Calculates both of the diagrams that use v_pppp using the fact that it is sparse
 
@@ -224,13 +226,15 @@ def v_pppp_dgrams(v_pppp, t1, t2):
     :type t1:       numpy array
     :param t2:      T2 matrix t_{ij}^{ab}
     :type t2:       numpy array
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:        The result of the two diagrams that contribute to t2
     :rtype:         numpy array, numpy array
     """
     hnum = np.shape(t1)[1]
     pnum = np.shape(t1)[0]
-    ret1 = np.zeros((pnum, pnum,hnum, hnum),dtype=complex)
-    ret2 = np.zeros((pnum, pnum,hnum, hnum),dtype=complex)
+    ret1 = np.zeros((pnum, pnum,hnum, hnum),dtype=dtype)
+    ret2 = np.zeros((pnum, pnum,hnum, hnum),dtype=dtype)
     doubleT1 = contract('ci, dj ->cdij', t1, t1)
     for val in v_pppp:
         a, b, c, d, v = val

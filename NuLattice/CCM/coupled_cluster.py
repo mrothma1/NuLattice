@@ -17,7 +17,7 @@ import NuLattice.CCM.three_body_utils as tbu
 import NuLattice.lattice as lat
 import NuLattice.CCM.ccDgrams as dgrams
 
-def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
+def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh, dtype=None):
     """
     constructs fock matrices from one-body interaction and rank-4 tensors of two-body force
 
@@ -33,6 +33,8 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     :type v_phhh:   numpy array
     :param v_hhhh:  two body interaction matrix V^{ij}_{kl}
     :type v_hhhh:   numpy array
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:    Fock matrices f_pp, f_ph, f_hh
     :rtype:     numpy array, numpy array, numpy array
     """
@@ -46,9 +48,9 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     pnum=len(part)
     hnum=len(hole)
     
-    f_pp = np.zeros((pnum,pnum),dtype=complex)
-    f_ph = np.zeros((pnum,hnum),dtype=complex)
-    f_hh = np.zeros((hnum,hnum),dtype=complex)
+    f_pp = np.zeros((pnum,pnum),dtype=dtype)
+    f_ph = np.zeros((pnum,hnum),dtype=dtype)
+    f_hh = np.zeros((hnum,hnum),dtype=dtype)
 
 
     for a in range(pnum):
@@ -94,7 +96,7 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
             
     return f_pp, f_ph, f_hh
 
-def get_all_interactions(part,hole,mycontact, sparse = False):
+def get_all_interactions(part,hole,mycontact, sparse = False, dtype = None):
     """
     This routine takes the relatively small number of two-body matrix elements in mycontact
     and sorts them into the four-indexed interaction tensors. It also anti-symmetrizes the latter
@@ -108,6 +110,8 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
     :type mycontact:    list[(int, int, int, int, float)]
     :param sparse:      Optional; whether or not v_pppp and v_ppph should be stored as sparse arrays or not
     :type sparse:       bool
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:    Two body matrices v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh as rank-four tensors.  
     :rtype:     numpy array | sparse array, numpy array | sparse array, numpy array, numpy array, numpy array, numpy array
     """
@@ -123,13 +127,13 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
         v_pppp = []
         v_ppph = []
     else:
-        v_pppp = np.zeros((pnum,pnum,pnum,pnum),dtype=complex)
-        v_ppph = np.zeros((pnum,pnum,pnum,hnum),dtype=complex)
+        v_pppp = np.zeros((pnum,pnum,pnum,pnum),dtype=dtype)
+        v_ppph = np.zeros((pnum,pnum,pnum,hnum),dtype=dtype)
 
-    v_pphh=np.zeros((pnum,pnum,hnum,hnum),dtype=complex)
-    v_phph=np.zeros((pnum,hnum,pnum,hnum),dtype=complex)
-    v_phhh=np.zeros((pnum,hnum,hnum,hnum),dtype=complex)
-    v_hhhh=np.zeros((hnum,hnum,hnum,hnum),dtype=complex)
+    v_pphh=np.zeros((pnum,pnum,hnum,hnum),dtype=dtype)
+    v_phph=np.zeros((pnum,hnum,pnum,hnum),dtype=dtype)
+    v_phhh=np.zeros((pnum,hnum,hnum,hnum),dtype=dtype)
+    v_hhhh=np.zeros((hnum,hnum,hnum,hnum),dtype=dtype)
     for [i1,i2,i3,i4, val] in mycontact:
         currSparse = False
         # note: i1<i2 and i3<i4 is stored only in mycontact
@@ -330,7 +334,7 @@ def t1Init(f_ph, f_pp, f_hh, delta):
     return f_ph / denom
 
 def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, sparse = True):
+           v_ppph_results, sparse = True, dtype = None):
     """
     iterating t1 using the CCSD equations
 
@@ -355,6 +359,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     :type v_ppph_results:   numpy array | list[numpy array]
     :param sparse:  whether or not v_pppp and v_ppph are stored as sparse arrays or not
     :type sparse:   bool    
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:     updated t_i^a
     :rtype:     numpy array
     """
@@ -373,8 +379,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     pnum = len(f_pp)
     hnum = len(f_hh)
 
-    X_hh = np.zeros((hnum, hnum),dtype=complex)
-    X_pp = np.zeros((pnum, pnum),dtype=complex)
+    X_hh = np.zeros((hnum, hnum),dtype=dtype)
+    X_pp = np.zeros((pnum, pnum),dtype=dtype)
     
     X_hh -= f_hh #2
     X_pp += f_pp #3
@@ -428,7 +434,7 @@ def t2Init(f_pp, f_hh, v_pphh, delta):
 
 
 def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, v_hhhh, sparse = True):
+           v_ppph_results, v_hhhh, sparse = True, dtype = None):
     """
     iterating t2, factoring out terms that look like g_i^i and g_a^a
 
@@ -457,6 +463,8 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     :type v_hhhh:   numpy array
     :param sparse:  whether or not v_pppp and v_ppph are stored as sparse arrays or not
     :type sparse:   bool    
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:     updated t_ij^ab
     :rtype:     numpy array
     """
@@ -486,8 +494,8 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     pnum = len(f_pp)
     hnum = len(f_hh)
 
-    X_hh = np.zeros((hnum, hnum),dtype=complex)
-    X_pp = np.zeros((pnum, pnum),dtype=complex)
+    X_hh = np.zeros((hnum, hnum),dtype=dtype)
+    X_pp = np.zeros((pnum, pnum),dtype=dtype)
     #factoring out all of the X_a^a and X_i^i terms
     #note that I am again calculating -X_i^i here like for t1
     X_hh -= f_hh
@@ -508,7 +516,7 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
         H2 += dgrams.dgram_bijk_ak1(v_ppph_results[5], t1)
         H2 += dgrams.dgram_bijk_ak2(v_ppph_results[6], t1)
 
-        dgram_abcd_cdij, dgram_abcd_ci_dj = dgrams.v_pppp_dgrams(v_pppp, t1, t2)
+        dgram_abcd_cdij, dgram_abcd_ci_dj = dgrams.v_pppp_dgrams(v_pppp, t1, t2, dtype=dtype)
         H2 += 0.5 * dgram_abcd_cdij
         H2 += 0.5 * dgrams.pIJ(dgram_abcd_ci_dj)
     else:
@@ -533,7 +541,7 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     return t2
 
 def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 1000, max_diis = 10, 
-                delta = 0, mixing = 0.5, verbose = False, sparse = True, ccs = False): 
+                delta = 0, mixing = 0.5, verbose = False, sparse = True, ccs = False, dtype = None): 
     """
     Solves for the correlation energy of a system using the CCSD equations.
     DIIS credit to Daniel G. A. Smith and Lori A. Burns, and The Psi4NumPy Developers, https://github.com/psi4/psi4numpy
@@ -559,6 +567,8 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     :type sparse:   bool
     :param ccs:     Optional; whether to perform just the ccs equations or not
     :type ccs:      bool
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :returns:   correlation energy, t1, and t2
     :rtype:     float, numpy array, numpy array
     """
@@ -589,16 +599,16 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
         oldT2 = deepcopy(t2)
                 
         if sparse:
-            v_ppph_results = dgrams.v_ppph_dgrams(v_ppph, t1, t2)
+            v_ppph_results = dgrams.v_ppph_dgrams(v_ppph, t1, t2, dtype= dtype)
         else:
             v_ppph_results = v_ppph
         t1 = mixing * t1 + (1. - mixing) * t1Iter(t1, t2, f_ph, f_pp, f_hh,
                                                   v_phph, v_phhh, v_pphh, v_ppph_results,
-                                                  sparse=sparse)
+                                                  sparse=sparse, dtype=dtype)
         if not ccs:
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
                                                       v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
-                                                      sparse=sparse)
+                                                      sparse=sparse,dtype=dtype)
 
         energy = ccsd_energy(f_ph,v_pphh, t2, t1)
 
@@ -630,7 +640,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             del diis_errors[0]
                 
             diis_size -= 1
-            B = -1 * np.ones((diis_size, diis_size),dtype=complex)
+            B = -1 * np.ones((diis_size, diis_size),dtype=dtype)
             B[-1, -1] = 0
 
             for n1, e1 in enumerate(diis_errors):
@@ -640,7 +650,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
 
             B[:-1, :-1] /= np.abs(B[:-1, :-1]).max()
 
-            resid = np.zeros(diis_size,dtype=complex)
+            resid = np.zeros(diis_size,dtype=dtype)
             resid[-1] = -1
 
             ci = np.linalg.solve(B, resid)
@@ -730,7 +740,7 @@ def get_norm_ord_int(thisL, holes, vT1, vS1, str_3NF = 0, sparse = True):
 
     return vacEn, fock_mats, two_body_int
 
-def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=True, NO2B = True):
+def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=True, NO2B = True, dtype = None):
     """
     Takes all the necessary parameters to generate the fock matrices, two and three body interactions to perform CCM
     
@@ -749,6 +759,8 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
     :param NO2B:      whether or not to apply the normal-order two-body approximation, i.e. to return None
                       for the three body interaction
     :type NO2B:       bool
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:        The reference energy and three lists, a list of the three fock matrices in the order [f_pp, f_ph, f_hh], 
                     all of the two body interactions in the order [v_pppp, v_ppph, v_pphh, v_phph, 
                     v_phhh, v_hhhh], and all of the three body interactions in the order [w_ppp_pph, 
@@ -760,9 +772,9 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
     hnum = len(hole)
     pnum = len(part)
 
-    v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = get_all_interactions(part,hole,mycontact,sparse)
+    v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = get_all_interactions(part,hole,mycontact,sparse, dtype=dtype)
     
-    f_pp, f_ph, f_hh = get_fock_matrices(part, hole, myTkin,v_phph, v_phhh, v_hhhh)
+    f_pp, f_ph, f_hh = get_fock_matrices(part, hole, myTkin,v_phph, v_phhh, v_hhhh, dtype=dtype)
     
     three_body_int = None
     #getting the 3 body interactions if needed and adding the effective contribution to the fock matrices and two body interactions
