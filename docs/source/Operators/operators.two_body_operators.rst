@@ -1,14 +1,14 @@
-﻿two\_body\_operators
-====================
+﻿operators.two\_body\_operators
+==============================
 
-.. automodule:: two_body_operators
+.. automodule:: operators.two_body_operators
 
    
    .. rubric:: Functions
 
    .. autosummary::
    
-      f_SL
+      change_lat_2body
       f_SS
       onePionEx
       rho_mult_NO

@@ -6,6 +6,5 @@ General Lattice
     
     lattice
     constants
+    constants_NLEFT
     references
-    one_body_operators
-    two_body_operators

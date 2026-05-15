@@ -1,3 +1,13 @@
+"""
+This module provides functions to define three body operators on the 3D lattice   
+"""
+__authors__   =  ["Thomas Papenbrock, Maxwell Rothman"]
+__credits__   =  ["Thomas Papenbrock, Maxwell Rothman"]
+__copyright__ = "(c) Thomas Papenbrock, Maxwell Rothman" 
+__license__   = "BSD-3-Clause"
+__date__      = "2026-05-15"
+
+
 import scipy.sparse as sparse
 import sys
 import numpy as np
