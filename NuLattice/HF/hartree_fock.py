@@ -222,32 +222,32 @@ def init_density(nstat,hole,dtype=float):
     return dens
 
 
-def HF_energy(op1, op2, op3, dens, op_alpha=None):
-    """
-    Computes the Hartree-Fock energy for a given density dens and Hamiltonian consisting
-    of one-body term op1, two-body term op2, and three-body term op3
+# def HF_energy(op1, op2, op3, dens, op_alpha=None):
+#     """
+#     Computes the Hartree-Fock energy for a given density dens and Hamiltonian consisting
+#     of one-body term op1, two-body term op2, and three-body term op3
 
-    :param op1:  list of one-body matrix elements
-    :type op1:   list[list[int,int, float]]
-    :param op2:  list of two-body matrix elements
-    :type op2:   list[list[int,int,int,int, float]]
-    :param op3:  list of three-body matrix elements
-    :type op3:   list[list[int,int,int,int,int,int, float]]
-    :param dens: density matrix (same shape as op1)
-    :type dens:  numpy.array((:,:), dtype=float)
-    :return:     Hartree-Fock energy
-    :rtype:      float
-    """
-    nstat = len(dens)
-    data_type=dens.dtype
-    dum = get_1body_matrix(op1,nstat,dtype=data_type)
-    dum += 0.5*contract_2nf(op2,dens)
-    dum += (1.0/6.0)*contract_3nf(op3,dens)
-    if op_alpha is not None:
-        fac8 = 40320.0
-        dum += contract_2alpha(op_alpha,dens)/fac8
-    erg = contract("ij,ji",dum,dens)
-    return np.real_if_close(erg)
+#     :param op1:  list of one-body matrix elements
+#     :type op1:   list[list[int,int, float]]
+#     :param op2:  list of two-body matrix elements
+#     :type op2:   list[list[int,int,int,int, float]]
+#     :param op3:  list of three-body matrix elements
+#     :type op3:   list[list[int,int,int,int,int,int, float]]
+#     :param dens: density matrix (same shape as op1)
+#     :type dens:  numpy.array((:,:), dtype=float)
+#     :return:     Hartree-Fock energy
+#     :rtype:      float
+#     """
+#     nstat = len(dens)
+#     data_type=dens.dtype
+#     dum = get_1body_matrix(op1,nstat,dtype=data_type)
+#     dum += 0.5*contract_2nf(op2,dens)
+#     dum += (1.0/6.0)*contract_3nf(op3,dens)
+#     if op_alpha is not None:
+#         fac8 = 40320.0
+#         dum += contract_2alpha(op_alpha,dens)/fac8
+#     erg = contract("ij,ji",dum,dens)
+#     return np.real_if_close(erg)
 
 
 def HF_iter(op1, op2, op3, dens, op_alpha=None, mix=0.5):
@@ -315,3 +315,98 @@ def solve_HF(op1, op2, op3, dens, op_alpha=None, mix=0.5, eps=1.e-8, max_iter=10
             erg0 = erg
             my_dens = new_dens.copy()
     return erg, vecs, converged
+def HF_energy(op1, op2, op3, dens, w3_sparse=False):
+    """
+    Computes the Hartree-Fock energy for a given density dens and Hamiltonian consisting
+    of one-body term op1, two-body term op2, and three-body term op3
+    :param op1:  list of one-body matrix elements
+    :type op1:   list[list[int,int, float]]
+    :param op2:  list of two-body matrix elements
+    :type op2:   list[list[int,int,int,int, float]]
+    :param op3:  list of three-body matrix elements
+    :type op3:   list[list[int,int,int,int,int,int, float]]
+    :param dens: density matrix (same shape as op1)
+    :type dens:  numpy.array((:,:), dtype=float)
+    :param w3_sparse: 
+    :return:     Hartree-Fock energy
+    :rtype:      float
+    """
+    nstat = len(dens)
+    data_type=dens.dtype
+    dum = get_1body_matrix(op1,nstat,dtype=data_type)
+    dum += 0.5*contract_2nf(op2,dens)
+    if w3_sparse:
+        dum += (1.0/6.0)*contract_3nf_sparse(op3,dens)
+    else:
+        dum += (1.0/6.0)*contract_3nf(op3,dens)
+        
+    erg = contract("ij,ji",dum,dens)
+    return erg
+
+def contract_3nf_sparse(csr,dens):
+    """
+    takes list of three-body matrix elements and contracts them with the density to get a one-body operator
+    :param csr:  matrix of three-body elements
+    :type csr:   scipy.sparse.csr_array
+    :param dens: square density matrix
+    :type dens:  numpy.array((:,:), dtype=float)
+    :return:     one-body operator of the same shape as the density matrix dens
+    :rtype:      numpy.array((:,:), dtype=float)
+    """
+    dim = len(dens)
+    res = np.zeros_like(dens)
+    rows, cols = csr.shape
+    for i in range(rows):
+    # Get start and end indices for current row i
+        start = csr.indptr[i]
+        end = csr.indptr[i+1]
+
+        row_values = csr.data[start:end]
+        row_indices = csr.indices[start:end]
+
+        for j, val in zip(row_indices, row_values):
+            # process row i, col j
+            # index = a + b * dim + c*dim**2
+            a = i % dim
+            b = ((i - a) % dim**2) // dim
+            c = (i - a - b*dim) // dim**2
+            d = j % dim
+            e = ((j - d) % dim**2) // dim
+            f = (j - d - e*dim) // dim**2
+            res[a,d] += val*( dens[b,e]*dens[c,f]  # (abc), (def), antisym last two pairs
+                             -dens[c,e]*dens[b,f]
+                             -dens[b,f]*dens[c,e]
+                             +dens[c,f]*dens[b,e] )
+            res[b,d] += val*( dens[c,e]*dens[a,f]  # (bca), (def), antisym last two pairs
+                             -dens[a,e]*dens[c,f]
+                             -dens[c,f]*dens[a,e]
+                             +dens[a,f]*dens[c,e] )        
+            res[c,d] += val*( dens[a,e]*dens[b,f]  # (cab), (def), antisym last two pairs
+                             -dens[b,e]*dens[a,f]
+                             -dens[a,f]*dens[b,e]
+                             +dens[b,f]*dens[a,e] )
+            res[a,e] += val*( dens[b,f]*dens[c,d]  # (abc), (efd), antisym last two pairs
+                             -dens[c,f]*dens[b,d]
+                             -dens[b,d]*dens[c,f]
+                             +dens[c,d]*dens[b,f] )
+            res[b,e] += val*( dens[c,f]*dens[a,d]  # (bca), (efd), antisym last two pairs
+                             -dens[a,f]*dens[c,d]
+                             -dens[c,d]*dens[a,f]
+                             +dens[a,d]*dens[c,f] )        
+            res[c,e] += val*( dens[a,f]*dens[b,d]  # (cab), (efd), antisym last two pairs
+                             -dens[b,f]*dens[a,d]
+                             -dens[a,d]*dens[b,f]
+                             +dens[b,d]*dens[a,f] )
+            res[a,f] += val*( dens[b,d]*dens[c,e]  # (abc), (fde), antisym last two pairs
+                             -dens[c,d]*dens[b,e]
+                             -dens[b,e]*dens[c,d]
+                             +dens[c,e]*dens[b,d] )
+            res[b,f] += val*( dens[c,e]*dens[a,f]  # (bca), (fde), antisym last two pairs
+                             -dens[a,e]*dens[c,f]
+                             -dens[c,f]*dens[a,e]
+                             +dens[a,f]*dens[c,e] )        
+            res[c,f] += val*( dens[a,d]*dens[b,e]  # (cab), (fde), antisym last two pairs
+                             -dens[b,d]*dens[a,e]
+                             -dens[a,e]*dens[b,d]
+                             +dens[b,e]*dens[a,d] )
+    return res

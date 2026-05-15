@@ -147,7 +147,7 @@ def f_SS(myL, bpi, a_lat, m_pi_0 = consts.m_pi_0):
 
     return fSS
 
-def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,g_A=consts.g_A, f_pi = consts.f_pi, max_mem=1e9):
+def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,g_A=consts.g_A, f_pi = consts.f_pi, m_pi_0 = consts.m_pi_0, max_mem=1e9):
     """
     computes the potential for one pion exchange
 
@@ -167,6 +167,8 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,g_A=consts.g_A
     :type g_A:      float
     :param f_pi:    Optional; Pion decay constant
     :type f_pi:     float
+    :param m_pi_0:  Optional; Neutral pion mass
+    :type m_pi_0:   float
     :param max_mem: maximum memory size for the temporary float array to get to 
                     before compressing it into a scipy.sparse array
     :type max_mem:  float
@@ -177,7 +179,7 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,g_A=consts.g_A
     """
     if verbose:
         print('Calculating f_SS...', end='')
-    fSS = f_SS(myL, bpi, a_lat)
+    fSS = f_SS(myL, bpi, a_lat, m_pi_0=m_pi_0)
     scale = - (g_A / (2.0 * a_lat * f_pi)) ** 2 * mult / 2.0
     dim  = myL **3 * 4
     if verbose:
