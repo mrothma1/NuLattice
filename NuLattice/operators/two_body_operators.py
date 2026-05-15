@@ -12,37 +12,12 @@ import numpy as np
 import itertools
 import scipy.sparse as sparse
 import sys
+import os
 from concurrent.futures import ProcessPoolExecutor
 
 import NuLattice.lattice as lat
 import NuLattice.constants as consts
-import NuLattice.one_body_operators as ob_ops
-
-def f_SL(site1, site2, myL, sL):
-    """
-    Calculates the local smearing function at two points with strength sL
-    
-    :param site1:   first site on the lattice
-    :type site1:    (int, int, int)
-    :param site2:   second site on the lattice
-    :type site2:    (int, int, int)
-    :param myL:     number of lattice sites in each direction
-    :type myL:      int
-    :param sL:      local smearing strength
-    :type sL:       float
-    :return:        value of the local smearing function
-    :rtype:         float
-    """
-    if site1 == site2:
-        return 1
-    i1, j1, k1 = site1
-    i2, j2, k2 = site2
-    dist_sq = (((i1 - i2 + myL // 2) % myL - myL // 2) ** 2 
-            + ((j1 - j2 + myL // 2) % myL - myL // 2) ** 2 
-            + ((k1 - k2 + myL // 2) % myL - myL // 2) ** 2)
-    if dist_sq == 1:
-        return sL
-    return 0
+import NuLattice.operators.one_body_operators as ob_ops
 
 def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
     """
@@ -54,7 +29,7 @@ def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
     :type rho_2:    scipy.sparse.coo_array
     :param mult:    Factor to scale the calculation by
     :type mult:     float
-    :param max_mem: Optional; Maximum memory size for the value array
+    :param max_mem: Optional; Maximum memory size for the temporary arrays
                     to get to before compressing into a sparse format.
                     If left as 0, no limit to the memory will be set
     :type max_mem:  int
@@ -78,7 +53,7 @@ def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
                 tmp_col.append(b + a * dim)
                 tmp_row.append(c + d * dim)
                 tmp_val.append(-matele)
-                if max_mem != 0 and sys.getsizeof(tmp_val) > max_mem:
+                if max_mem != 0 and sys.getsizeof(tmp_val) + sys.getsizeof(tmp_col) + sys.getsizeof(tmp_row) > max_mem:
                     ret += sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 2, dim ** 2))
                     tmp_val = []
                     tmp_row = []
@@ -86,7 +61,8 @@ def rho_mult_NO(rho_1, rho_2, mult, max_mem = 0):
 
     return ret + sparse.csr_array((tmp_val, (tmp_row, tmp_col)), shape = (dim ** 2, dim ** 2))
 
-def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, isospin = 2, verbose = False, max_mem = 0):
+
+def shortRangeV_2body(lattice, myL, sL, sNL, c0, op1b = None, spin = 2, isospin = 2, verbose = False, max_mem = 0, sites=None):
     """
     Generates a short range two body interaction of the form sum_n :rho(n):^2 where rho is a smeared density
     
@@ -98,10 +74,8 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, i
     :type sL:       float
     :param sNL:     non-local smearing strength
     :type sNL:      float
-    :param c0:      strength of the interaction
+    :param c0:      strength of the interaction in MeV
     :type c0:       float
-    :param a_lat:   lattice spacing divided by hbar c
-    :type a_lat:    float
     :param op1b:    Optional; one body operator used to generate rho in the form 
                     a^dagger [op1b] a. If None, then the identity operator is used
     :type op1b:     scipy.sparse.csr_array()
@@ -111,52 +85,37 @@ def shortRangeV_2body(lattice, myL, sL, sNL, c0, a_lat, op1b = None, spin = 2, i
     :type isospin:  int  
     :param verbose: Optional; whether or not to print progress during calculation
     :type verbose:  bool
-    :param max_mem: maximum memory size for the temporary float array to get to before 
-                    compressing it into a scipy.sparse array
+    :param max_mem: Optional; maximum memory for all of the temporary float arrays to take
+                    up before compressing into a sparse format. If set to 0, it will completely
+                    fill the array before compressing. NOTE: this utilizes a multiprocess to
+                    parallelize the loop over all sites, so the memory for each site will be
+                    max_mem / cpu_count and you should set the memory limit accordingly
     :type max_mem:  float
+    :param sites:   Optional; Give default value or None in order to compute the interaction at 
+                    all sites, or give a list of sites in the format [i, j, k] to only compute it 
+                    at the given sites
+    :type sites:    list[int,int,int]
     :return:        A sparse csr_array representing V^{ab}_{ij} in MeV, 
                     for dim=spin*isospin*L^3, the row indicies correspond
-                    to a + b * dim + c and column indices correspond to i + j * dim
+                    to a + b * dim and column indices correspond to i + j * dim
     :rtype:         scipy.sparse.csr_array()
     """
-    rho_n = []
-    if verbose:
-        print('Generating Densities...',end='')
-    for site in lattice:
-        rho_n.append(ob_ops.rho_op(site, myL, op1b=op1b, sNL=sNL, spin=spin, isospin = isospin))
-    if verbose:
-        print('Done')
-
+    rho_smeared = ob_ops.get_smeared_dens(lattice, myL, sL, sNL, op1b = op1b, spin=spin, isospin=isospin, verbose=verbose, sites=sites)
     dim  = myL **3 * spin * isospin
-    if sL != 0:
-        if verbose:
-            print('Performing Local Smearing...',end='')
-        rho_smeared = []
-        for site1 in lattice:
-            tmp = sparse.csr_array(np.zeros([dim, dim]))
-            for site2 in lattice:
-                pos = site2[0] * myL ** 2 + site2[1] * myL + site2[2]
-                scale = f_SL(site1, site2, myL, sL)
-                if scale != 0:
-                    tmp += rho_n[pos] * scale
-            rho_smeared.append(tmp.tocoo())
-        if verbose:
-            print('Done')
-    else:
-        rho_smeared = rho_n
     if verbose:
         print('Generating Interaction...',end='')
     ret = sparse.csr_array((dim ** 2, dim ** 2))
     with ProcessPoolExecutor() as executor:
+        max_mem_proc = max_mem / os.cpu_count()
         size = len(rho_smeared)
-        for val in executor.map(rho_mult_NO, rho_smeared, rho_smeared, [c0 / a_lat] * size, [max_mem] * size):
+        for val in executor.map(rho_mult_NO, rho_smeared, rho_smeared, [c0] * size, [max_mem_proc] * size):
             ret += val
     if verbose:
         print('Interaction Generated')
 
     return ret
 
-def f_SS(myL, bpi, a_lat):
+def f_SS(myL, bpi, a_lat, m_pi_0 = consts.m_pi_0):
     """
     f_S'S function to be used in one pion exchange
     
@@ -166,11 +125,13 @@ def f_SS(myL, bpi, a_lat):
     :type bpi:      float
     :param a_lat:   lattice spacing divided by hbar c
     :type a_lat:    float
+    :param m_pi_0:  Optional; Neutral pion mass
+    :type m_pi_0:   float
     :return:        f_S'S(m), where m is the vector n'-n, as a numpy array that gets 
                     indexed as fSS[S'][S][m_x][m_y][m_z]
     :rtype:         complex numpy array of dimension 3,3, myL, myL, myL
     """
-    m_pi = consts.m_pi_0 * a_lat
+    m_pi = m_pi_0 * a_lat
     q =np.fft.fftfreq(myL, 1/ (2.0 * np.pi))
     qx, qy, qz = np.meshgrid(q, q, q, indexing="ij")
 
@@ -186,7 +147,7 @@ def f_SS(myL, bpi, a_lat):
 
     return fSS
 
-def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
+def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,g_A=consts.g_A, f_pi = consts.f_pi, max_mem=1e9):
     """
     computes the potential for one pion exchange
 
@@ -202,6 +163,10 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
     :type verbose:  bool
     :param mult:    Optional; scale factor to multiply potential by
     :type mult:     float
+    :param g_A:     Optional; Axial-vector coupling constant
+    :type g_A:      float
+    :param f_pi:    Optional; Pion decay constant
+    :type f_pi:     float
     :param max_mem: maximum memory size for the temporary float array to get to 
                     before compressing it into a scipy.sparse array
     :type max_mem:  float
@@ -213,7 +178,7 @@ def onePionEx(myL, bpi, a_lat, lattice, verbose = False, mult = 1,max_mem=1e8):
     if verbose:
         print('Calculating f_SS...', end='')
     fSS = f_SS(myL, bpi, a_lat)
-    scale = - (consts.g_A / (2.0 * a_lat * consts.f_pi)) ** 2 * mult / 2.0
+    scale = - (g_A / (2.0 * a_lat * f_pi)) ** 2 * mult / 2.0
     dim  = myL **3 * 4
     if verbose:
         print('Done\nCalculating Densities...', end='')
@@ -318,3 +283,34 @@ def sparse_to_list_2body(sparse_int, myL, spin=2, isospin=2):
 
         ret.append([a, b, c, d, v])
     return ret
+
+def change_lat_2body(inter, origL, newL, spin=2, isospin=2):
+    """
+    Changes a two-body interaction in list format for a given L to a new L
+
+    :param inter:   interaction stored as a list of lists [a,b,c,d,v] 
+                    where a, b, c, and d are indices and v is the value 
+                    for V^ab_cd
+    :type inter:    list[(int, int, int, int, float)]
+    :param origL:   original L for the basis of inter
+    :type origL:    int
+    :param newL:    new L to return the basis of inter
+    :type newL:     int
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int
+    :return:        interaction in the basis of the new L in the same
+                    list format
+    :rtype:         list[(int, int, int, int, float)]    
+    """
+    new_inter = [[] for _ in range(len(inter))]
+    for i in range(len(inter)):
+        a, b, c, d, val = inter[i]
+        lst = []
+        ind_lst = [a,b,c,d]
+        for ind in ind_lst:
+            lst.append(lat.state2index(lat.index2state(ind, origL, spin, isospin), newL, spin, isospin))
+        lst.append(val)
+        new_inter[i] = lst
+    return new_inter

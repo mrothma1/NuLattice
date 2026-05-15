@@ -18,7 +18,7 @@ def list_to_sparse1b(mylist, sparsetype="csr"):
     """
     transforms a list of matrix elements of a 1-body operator to a sparse format
     :param mylist:     the one-body operator
-    :type mylist:      list of lists [[p,q, val, ...] with int p, q, and rael or complex val
+    :type mylist:      list of lists [[p,q, val, ...] with int p, q, and real or complex val
     :param sparsetype: the desired format (only "csr" and "coo" implemented as of now)
     :type sparsetype:  string (only "csr" and "coo" implemented as of now)
     :return:           the sparse matrix of mylist
@@ -48,7 +48,7 @@ def indConv(ind, myL):
     z = ((ind - x) // myL - y) // myL
     return x, y, z
 
-def tKin(myL, Nk, a_lat, spin=2, isospin=2):
+def tKin(myL, Nk, a_lat, spin=2, isospin=2, mass=consts.mass):
     """
     computes 1-body kinetic energy matrix elements.
     
@@ -63,11 +63,13 @@ def tKin(myL, Nk, a_lat, spin=2, isospin=2):
     :type spin:     int
     :param isospin: Optional; number of isospin degrees of freedom
     :type isospin:  int    
+    :param mass:    Optional; nucleon mass
+    :type mass:     float
     :return:        list of tuples [i, j, value] where i and j are indices in the single-particle 
                     basis, and value is the value of the matrix element Tij in MeV
     :rtype:         list[(int, int, float)]
     """
-    h = -1.0 / 2.0 / (consts.mass*a_lat)
+    h = -1.0 / 2.0 / (mass*a_lat)
 
     KK = np.zeros([myL**3, myL**3])
     cf0 = 0.0
@@ -535,3 +537,125 @@ def p_z(lattice, myL, spin=2, isospin=2):
                 mat.append([indx2, indx1, -val]) #adds a hop-to-the left matrix element
     #
     return mat
+
+def change_lat_1body(inter, origL, newL, spin=2, isospin=2):
+    """
+    Changes a one-body interaction in list format for a given L to a new L
+
+    :param inter:   interaction stored as a list of lists [a,b,v] 
+                    where a and b are indices and v is the value 
+                    for V^a_b
+    :type inter:    list[(int, int, float)]
+    :param origL:   original L for the basis of inter
+    :type origL:    int
+    :param newL:    new L to return the basis of inter
+    :type newL:     int
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int
+    :return:        interaction in the basis of the new L in the same
+                    list format
+    :rtype:         list[(int, int, float)]    
+    """
+    new_inter = [[] for _ in range(len(inter))]
+    for i in range(len(inter)):
+        a, b, val = inter[i]
+        lst = []
+        ind_lst = [a,b]
+        for ind in ind_lst:
+            lst.append(lat.state2index(lat.index2state(ind, origL, spin, isospin), newL, spin, isospin))
+        lst.append(val)
+        new_inter[i] = lst
+    return new_inter
+
+def get_smeared_dens(lattice, myL, sL, sNL, op1b=None, spin = 2, isospin = 2, verbose = False, sites = None):
+    """
+    Gets the smeared density
+
+    :param lattice: list of lattice sites returned by lattice.get_lattice
+    :type lattice:  list[(int, int, int)] 
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param sL:      local smearing strength
+    :type sL:       float
+    :param sNL:     non-local smearing strength
+    :type sNL:      float
+    :param op1b:    Optional; one body operator used to generate rho in the form 
+                    a^dagger [op1b] a. If None, then the identity operator is used
+    :type op1b:     scipy.sparse.csr_array()
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int  
+    :param verbose: Optional; whether or not to print progress during calculation
+    :type verbose:  bool
+    :param sites:   Optional; Give default value or None in order to compute the interaction at 
+                    all sites, or give a list of sites in the format [i, j, k] to only compute it 
+                    at the given sites
+    :type sites:    list[int,int,int]
+    :returns:       smeared density as list of densities at a site
+    :rtype:         list[scipy.sparse.coo_array()]
+    """
+    rho_n = []
+    if verbose:
+        print('Generating Densities...',end='')
+    for site1 in lattice:
+        rho_n.append(rho_op(site1, myL, op1b=op1b, sNL=sNL, spin=spin, isospin = isospin))
+    if verbose:
+        print('Done')
+    dim  = myL **3 * spin * isospin
+    if sites != None:
+        site1Loop = sites
+        if sL == 0:
+            rho_ns = []
+            for loc in sites:
+                pos = loc[0] * myL ** 2 + loc[1] * myL + loc[2]
+                rho_ns.append(rho_n[pos])
+            rho_n = rho_ns
+    else:
+        site1Loop = lattice
+    if sL != 0:
+        if verbose:
+            print('Performing Local Smearing...',end='')
+        rho_smeared = []
+        for site1 in site1Loop:
+            tmp = sparse.csr_array(np.zeros([dim, dim]))
+            for site2 in lattice:
+                pos = site2[0] * myL ** 2 + site2[1] * myL + site2[2]
+                scale = smear_local(site1, site2, myL, sL)
+                if scale != 0:
+                    tmp += rho_n[pos] * scale
+            rho_smeared.append(tmp.tocoo())
+        if verbose:
+            print('Done')
+    else:
+        rho_smeared = rho_n
+    return rho_smeared
+
+
+def smear_local(site1, site2, myL, sL):
+    """
+    Calculates the local smearing function at two points with strength sL
+    
+    :param site1:   first site on the lattice
+    :type site1:    (int, int, int)
+    :param site2:   second site on the lattice
+    :type site2:    (int, int, int)
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param sL:      local smearing strength
+    :type sL:       float
+    :return:        value of the local smearing function
+    :rtype:         float
+    """
+    if site1 == site2:
+        return 1
+    i1, j1, k1 = site1
+    i2, j2, k2 = site2
+    dist_sq = (((i1 - i2 + myL // 2) % myL - myL // 2) ** 2 
+            + ((j1 - j2 + myL // 2) % myL - myL // 2) ** 2 
+            + ((k1 - k2 + myL // 2) % myL - myL // 2) ** 2)
+    if dist_sq == 1:
+        return sL
+    return 0
