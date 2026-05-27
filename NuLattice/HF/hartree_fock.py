@@ -221,36 +221,7 @@ def init_density(nstat,hole,dtype=float):
         dens[i,i] = 1.0
     return dens
 
-
-# def HF_energy(op1, op2, op3, dens, op_alpha=None):
-#     """
-#     Computes the Hartree-Fock energy for a given density dens and Hamiltonian consisting
-#     of one-body term op1, two-body term op2, and three-body term op3
-
-#     :param op1:  list of one-body matrix elements
-#     :type op1:   list[list[int,int, float]]
-#     :param op2:  list of two-body matrix elements
-#     :type op2:   list[list[int,int,int,int, float]]
-#     :param op3:  list of three-body matrix elements
-#     :type op3:   list[list[int,int,int,int,int,int, float]]
-#     :param dens: density matrix (same shape as op1)
-#     :type dens:  numpy.array((:,:), dtype=float)
-#     :return:     Hartree-Fock energy
-#     :rtype:      float
-#     """
-#     nstat = len(dens)
-#     data_type=dens.dtype
-#     dum = get_1body_matrix(op1,nstat,dtype=data_type)
-#     dum += 0.5*contract_2nf(op2,dens)
-#     dum += (1.0/6.0)*contract_3nf(op3,dens)
-#     if op_alpha is not None:
-#         fac8 = 40320.0
-#         dum += contract_2alpha(op_alpha,dens)/fac8
-#     erg = contract("ij,ji",dum,dens)
-#     return np.real_if_close(erg)
-
-
-def HF_iter(op1, op2, op3, dens, op_alpha=None, mix=0.5):
+def HF_iter(op1, op2, op3, dens, mix=0.5):
     """
     Performs one iteration of the Hartree-Fock procedure
 
@@ -270,14 +241,14 @@ def HF_iter(op1, op2, op3, dens, op_alpha=None, mix=0.5):
     :rtype:      float, numpy.array((:,:), dtype=float), numpy.array((:,:), dtype=float)
     """
     npart=round(np.real(np.trace(dens))) # rounds to nearest integer
-    erg = HF_energy(op1, op2, op3, dens, op_alpha=op_alpha)
-    hf = make_HF_ham(op1, op2, op3, dens, op_alpha=op_alpha)
+    erg = HF_energy(op1, op2, op3, dens)
+    hf = make_HF_ham(op1, op2, op3, dens)
     vals, vecs = np.linalg.eigh(hf)
     new_dens=contract("pi,qi->pq", vecs[:,0:npart], np.conjugate(vecs[:,0:npart]) )
     res_dens = mix*new_dens + (1.0-mix)*dens
     return erg, res_dens, vecs
 
-def solve_HF(op1, op2, op3, dens, op_alpha=None, mix=0.5, eps=1.e-8, max_iter=100, verbose=False):
+def solve_HF(op1, op2, op3, dens, mix=0.5, eps=1.e-8, max_iter=100, verbose=False):
     """
     Solve the Hartree-Fock problem
 
@@ -301,9 +272,9 @@ def solve_HF(op1, op2, op3, dens, op_alpha=None, mix=0.5, eps=1.e-8, max_iter=10
     """
     converged = False
     my_dens=dens.copy()
-    erg0 = HF_energy(op1, op2, op3, my_dens, op_alpha=op_alpha)
+    erg0 = HF_energy(op1, op2, op3, my_dens)
     for i in range(max_iter):
-        erg, new_dens, vecs = HF_iter(op1, op2, op3, my_dens, op_alpha=op_alpha, mix=mix)
+        erg, new_dens, vecs = HF_iter(op1, op2, op3, my_dens, mix=mix)
         diff = np.abs(erg-erg0)
         diff_dens = np.sum(np.abs(new_dens-my_dens))
         if verbose:
@@ -341,7 +312,7 @@ def HF_energy(op1, op2, op3, dens, w3_sparse=False):
         dum += (1.0/6.0)*contract_3nf(op3,dens)
         
     erg = contract("ij,ji",dum,dens)
-    return erg
+    return np.real_if_close(erg)
 
 def contract_3nf_sparse(csr,dens):
     """

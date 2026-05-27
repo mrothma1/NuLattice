@@ -22,6 +22,6 @@ if __name__ == '__main__':
     v_NL=tbops.shortRangeV_2body(lattice, thisL, sL, sNL, cNL, verbose=verbose)
     iso_ops = [obops.tau_x(lattice, thisL), obops.tau_y(lattice, thisL), obops.tau_z(lattice, thisL)]
     for op in iso_ops:
-        v_NL += tbops.shortRangeV_2body(lattice, thisL, sL, sNL, cINL, verbose = verbose, op1b = obops.list_to_sparse1b(op))
+        v_NL += tbops.shortRangeV_2body(lattice, thisL, sL, sNL, cINL, verbose = verbose, op1b = 2.0 * obops.list_to_sparse1b(op))
     mycontact = tbops.sparse_to_list_2body(v_NL+v_OPE, thisL)
     print("number of matrix elements from two-body contacts", len(mycontact))

@@ -19,6 +19,6 @@ if __name__ == '__main__':
     bpi = 0.7
     v_OPE = twbops.onePionEx(thisL, bpi, a, lattice, verbose=verbose, g_A=nleftConsts.g_A, f_pi = nleftConsts.f_pi, m_pi_0=nleftConsts.m_pi_0)
     site = [[2, 2, 2]]
-    site_2body = twbops.shortRangeV_2body(lattice, site, thisL, sL, sNL, c2,verbose=verbose, site=site)
+    site_2body = twbops.shortRangeV_2body(lattice, thisL, sL, sNL, c2,verbose=verbose, sites=site)
     site_2body = twbops.sparse_to_list_2body(site_2body, thisL)
-    site_3body = thbops.shortRangeV_3body(lattice, thisL, sL, sNL, c3, verbose=verbose, max_mem=1e9, site=site)
+    site_3body = thbops.shortRangeV_3body(lattice, thisL, sL, sNL, c3, verbose=verbose, max_mem=1e9, sites=site)
