@@ -209,6 +209,7 @@ def solve_HF(op1, op2, op3, dens, mix=0.5, eps=1.e-8, max_iter=100, verbose=Fals
             erg0 = erg
             my_dens = new_dens.copy()
     return erg, vecs, converged
+
 def HF_energy(op1, op2, op3, dens, w3_sparse=False):
     """
     Computes the Hartree-Fock energy for a given density dens and Hamiltonian consisting
