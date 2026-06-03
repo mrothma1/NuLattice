@@ -398,6 +398,7 @@ def spin_y(lattice, myL, spin=2, isospin=2):
                 mat.append([indx2, indx1, val])
     #
     return mat
+
 def spin_z(lattice, myL, spin=2, isospin=2):
     """
     computes matrix elements for 1-body spin-z operator.
@@ -428,6 +429,23 @@ def spin_z(lattice, myL, spin=2, isospin=2):
     #
     return mat
 
+def pauli_spin_x(lattice, myL, spin=2, isospin=2):
+    return [(p, q, 2 * x) for p, q, x in spin_x(lattice, myL, spin, isospin)]
+
+def pauli_spin_y(lattice, myL, spin=2, isospin=2):
+    return [(p, q, 2 * x) for p, q, x in spin_y(lattice, myL, spin, isospin)]
+
+def pauli_spin_z(lattice, myL, spin=2, isospin=2):
+    return [(p, q, 2 * x) for p, q, x in spin_z(lattice, myL, spin, isospin)]
+
+def pauli_tau_x(lattice, myL, spin=2, isospin=2):
+    return [(p, q, 2 * x) for p, q, x in tau_x(lattice, myL, spin, isospin)]
+
+def pauli_tau_y(lattice, myL, spin=2, isospin=2):
+    return [(p, q, 2 * x) for p, q, x in tau_y(lattice, myL, spin, isospin)]
+
+def pauli_tau_z(lattice, myL, spin=2, isospin=2):
+    return [(p, q, 2 * x) for p, q, x in tau_z(lattice, myL, spin, isospin)]
 
 def p_x(lattice, myL, spin=2, isospin=2):
     """
