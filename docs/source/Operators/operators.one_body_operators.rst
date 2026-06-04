@@ -17,6 +17,12 @@
       p_x
       p_y
       p_z
+      pauli_spin_x
+      pauli_spin_y
+      pauli_spin_z
+      pauli_tau_x
+      pauli_tau_y
+      pauli_tau_z
       rho_op
       smear_local
       spin_x
