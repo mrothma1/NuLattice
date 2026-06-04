@@ -10,7 +10,7 @@ __date__      = "2025-07-26"
 import numpy as np
 from opt_einsum import contract
 
-def v_ppph_dgrams(v_ppph, t1, t2):
+def v_ppph_dgrams(v_ppph, t1, t2, dtype = None):
     """
     Calculates all 6 of the diagrams that use v_ppph using the fact that it is sparse
 
@@ -20,25 +20,29 @@ def v_ppph_dgrams(v_ppph, t1, t2):
     :type t1:       numpy array
     :param t2:      T2 matrix t_{ij}^{ab}
     :type t2:       numpy array
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:        The result of the 6 diagrams that contribute to t1 and t2
     :rtype:         list[numpy array]
     """
     pnum = np.shape(t1)[0]
     hnum = np.shape(t1)[1]
-    ret0 = np.zeros((pnum, hnum))
-    ret1 = np.zeros((pnum, pnum))
-    ret2 = np.zeros((pnum, pnum, hnum, hnum))
-    ret3 = np.zeros((pnum, pnum))
-    ret4 = np.zeros((pnum, pnum, hnum, hnum))
-    ret5 = np.zeros((pnum, hnum, hnum, hnum))
-    ret6 = np.zeros((pnum, hnum, hnum, hnum))
+    ret0 = np.zeros((pnum, hnum),dtype=dtype)
+    ret1 = np.zeros((pnum, pnum),dtype=dtype)
+    ret2 = np.zeros((pnum, pnum, hnum, hnum),dtype=dtype)
+    ret3 = np.zeros((pnum, pnum),dtype=dtype)
+    ret4 = np.zeros((pnum, pnum, hnum, hnum),dtype=dtype)
+    ret5 = np.zeros((pnum, hnum, hnum, hnum),dtype=dtype)
+    ret6 = np.zeros((pnum, hnum, hnum, hnum),dtype=dtype)
     doubleT1 = contract('ci, dj ->cdij', t1, t1)
     for vals in v_ppph:
         c, d, a, k, v = vals
+        ret2[c, d, :, k] += v * t1[a, :]
+        v = np.conj(v)
         ret1[a, d] -= v * t1[c, k]
         ret3[d, a] += v * t1[c, k]
         ret0[a, :] -= 0.5 * v * t2[c, d, k, :]
-        ret2[c, d, :, k] += v * t1[a, :]
+        
         ret4[a, d, :, k] += v * t1[c, :]
         ret5[a, :, :, k] += v * t2[c, d, :, :]
         ret6[a, :, :, k] += v * doubleT1[c, d, :, :]
@@ -69,7 +73,7 @@ def dgram_ck_acik(f_ph, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return contract('ck, acik -> ai', f_ph, t2)
+    return contract('ck, acik -> ai', np.conj(f_ph), t2)
 
 def dgram_cikl_cakl(v_phhh, t2):
     """
@@ -82,7 +86,7 @@ def dgram_cikl_cakl(v_phhh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('cikl, cakl -> ai', v_phhh, t2)
+    return - 0.5 * contract('cikl, cakl -> ai', np.conj(v_phhh), t2)
 
 def dgram_cdkl_ck_dali(v_pphh, t1, t2):
     """
@@ -97,7 +101,7 @@ def dgram_cdkl_ck_dali(v_pphh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return contract('cdkl, ck, dali -> ai', v_pphh, t1, t2, optimize = 'greedy')
+    return contract('cdkl, ck, dali -> ai', np.conj(v_pphh), t1, t2, optimize = 'greedy')
 
 def dgram_ck_ci(f_ph, t1):
     """
@@ -110,7 +114,7 @@ def dgram_ck_ci(f_ph, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('ck, ci -> ki', f_ph, t1)
+    return - 0.5 * contract('ck, ci -> ki', np.conj(f_ph), t1)
 
 def dgram_ck_ak(f_ph, t1):
     """
@@ -123,7 +127,7 @@ def dgram_ck_ak(f_ph, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('ck, ak -> ac', f_ph, t1)
+    return - 0.5 * contract('ck, ak -> ac', np.conj(f_ph), t1)
 
 def dgram_bijk_bj(v_phhh, t1):
     """
@@ -136,7 +140,7 @@ def dgram_bijk_bj(v_phhh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - contract('bijk, bj -> ki', v_phhh, t1)
+    return - contract('bijk, bj -> ki', np.conj(v_phhh), t1)
 
 def dgram_cdlk_cdli(v_pphh, t2):
     """
@@ -149,7 +153,7 @@ def dgram_cdlk_cdli(v_pphh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('cdlk, cdli -> ki', v_pphh, t2)
+    return - 0.5 * contract('cdlk, cdli -> ki', np.conj(v_pphh), t2)
 
 def dgram_dckl_dakl(v_pphh, t2):
     """
@@ -162,7 +166,7 @@ def dgram_dckl_dakl(v_pphh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('dckl, dakl -> ac', v_pphh, t2)
+    return - 0.5 * contract('dckl, dakl -> ac', np.conj(v_pphh), t2)
 
 def dgram_cdlk_cl_di(v_pphh, t1):
     """
@@ -175,7 +179,7 @@ def dgram_cdlk_cl_di(v_pphh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('cdlk, cl, di -> ki',v_pphh, t1, t1, optimize = 'greedy')
+    return - 0.5 * contract('cdlk, cl, di -> ki',np.conj(v_pphh), t1, t1, optimize = 'greedy')
 
 def dgram_cdkl_dk_al(v_pphh, t1):
     """
@@ -188,7 +192,7 @@ def dgram_cdkl_dk_al(v_pphh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return + 0.5 * contract('cdkl, dk, al -> ac',v_pphh, t1, t1, optimize = 'greedy')
+    return + 0.5 * contract('cdkl, dk, al -> ac',np.conj(v_pphh), t1, t1, optimize = 'greedy')
 
 def pAB(val):
     """
@@ -212,7 +216,7 @@ def pIJ(val):
     """
     return val - contract('abij -> abji', val)
 
-def v_pppp_dgrams(v_pppp, t1, t2):
+def v_pppp_dgrams(v_pppp, t1, t2, dtype = None):
     """
     Calculates both of the diagrams that use v_pppp using the fact that it is sparse
 
@@ -222,13 +226,15 @@ def v_pppp_dgrams(v_pppp, t1, t2):
     :type t1:       numpy array
     :param t2:      T2 matrix t_{ij}^{ab}
     :type t2:       numpy array
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:        The result of the two diagrams that contribute to t2
     :rtype:         numpy array, numpy array
     """
     hnum = np.shape(t1)[1]
     pnum = np.shape(t1)[0]
-    ret1 = np.zeros((pnum, pnum,hnum, hnum))
-    ret2 = np.zeros((pnum, pnum,hnum, hnum))
+    ret1 = np.zeros((pnum, pnum,hnum, hnum),dtype=dtype)
+    ret2 = np.zeros((pnum, pnum,hnum, hnum),dtype=dtype)
     doubleT1 = contract('ci, dj ->cdij', t1, t1)
     for val in v_pppp:
         a, b, c, d, v = val
@@ -287,7 +293,7 @@ def dgram_cdkl_acik_dblj(v_pphh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.5 * pIJ(pAB(contract('cdkl, acik, dblj -> abij', v_pphh, t2, t2, optimize="greedy")))
+    return 0.5 * pIJ(pAB(contract('cdkl, acik, dblj -> abij', np.conj(v_pphh), t2, t2, optimize="greedy")))
 
 def dgram_cdkl_cdij_abkl(v_pphh, t2):
     """
@@ -300,7 +306,7 @@ def dgram_cdkl_cdij_abkl(v_pphh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.25 * contract('cdkl, cdij, abkl -> abij', v_pphh, t2, t2, optimize="greedy")
+    return 0.25 * contract('cdkl, cdij, abkl -> abij', np.conj(v_pphh), t2, t2, optimize="greedy")
 
 def dgram_klij_ak_bl(v_hhhh, t1):
     """
@@ -341,7 +347,7 @@ def dgram_cikl_ck_ablj(v_phhh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - pIJ(contract('cikl, ck, ablj -> abij', v_phhh, t1, t2, optimize="greedy"))
+    return - pIJ(contract('cikl, ck, ablj -> abij', np.conj(v_phhh), t1, t2, optimize="greedy"))
 
 def dgram_da_dbij(v_ppph_res, t2):
     """
@@ -382,7 +388,7 @@ def dgram_cikl_al_bcjk(v_phhh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - pIJ(pAB(contract('cikl, al, bcjk -> abij', v_phhh, t1, t2, optimize="greedy")))
+    return - pIJ(pAB(contract('cikl, al, bcjk -> abij', np.conj(v_phhh), t1, t2, optimize="greedy")))
 
 def dgram_cjkl_ci_abkl(v_phhh, t1, t2):
     """
@@ -397,7 +403,7 @@ def dgram_cjkl_ci_abkl(v_phhh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.5 * pIJ(contract('cjkl, ci, abkl -> abij', v_phhh, t1, t2, optimize="greedy"))
+    return 0.5 * pIJ(contract('cjkl, ci, abkl -> abij', np.conj(v_phhh), t1, t2, optimize="greedy"))
 
 #note that these two functions have the same indices, but are 
 #from two different diagrams, and that is because I factor out 
@@ -439,7 +445,7 @@ def dgram_cjkl_ci_ak_bl(v_phhh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.5 * pIJ(pAB(contract('cjkl, ci, ak, bl -> abij', v_phhh, t1, t1, t1, optimize="greedy")))
+    return 0.5 * pIJ(pAB(contract('cjkl, ci, ak, bl -> abij', np.conj(v_phhh), t1, t1, t1, optimize="greedy")))
 
 def dgram_cdkl_ci_dj_abkl(v_pphh, t1, t2):
     """
@@ -454,7 +460,7 @@ def dgram_cdkl_ci_dj_abkl(v_pphh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.25 * pIJ(contract('cdkl, ci, dj, abkl -> abij', v_pphh, t1, t1 ,t2, optimize="greedy"))
+    return 0.25 * pIJ(contract('cdkl, ci, dj, abkl -> abij', np.conj(v_pphh), t1, t1 ,t2, optimize="greedy"))
 
 def dgram_cdkl_ak_bl_cdij(v_pphh, t1, t2):
     """
@@ -469,7 +475,7 @@ def dgram_cdkl_ak_bl_cdij(v_pphh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.25 * pAB(contract('cdkl, ak, bl, cdij -> abij', v_pphh, t1, t1 ,t2, optimize="greedy"))
+    return 0.25 * pAB(contract('cdkl, ak, bl, cdij -> abij', np.conj(v_pphh), t1, t1 ,t2, optimize="greedy"))
 
 def dgram_cdkl_ci_bl_adkj(v_pphh, t1, t2):
     """
@@ -484,7 +490,7 @@ def dgram_cdkl_ci_bl_adkj(v_pphh, t1, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return pIJ(pAB(contract('cdkl, ci, bl, adkj -> abij', v_pphh, t1, t1, t2, optimize="greedy")))
+    return pIJ(pAB(contract('cdkl, ci, bl, adkj -> abij', np.conj(v_pphh), t1, t1, t2, optimize="greedy")))
 
 def dgram_cdkl_ci_ak_dj_bl(v_pphh, t1):
     """
@@ -497,7 +503,7 @@ def dgram_cdkl_ci_ak_dj_bl(v_pphh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return 0.25 * pIJ(pAB(contract('cdkl, ci, ak, dj, bl -> abij', v_pphh, t1, t1, t1, t1, optimize="greedy")))
+    return 0.25 * pIJ(pAB(contract('cdkl, ci, ak, dj, bl -> abij', np.conj(v_pphh), t1, t1, t1, t1, optimize="greedy")))
 
 def dgram_cdkl_bdkl(v_pphh, t2):
     """
@@ -510,7 +516,7 @@ def dgram_cdkl_bdkl(v_pphh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('cdkl, bdkl -> bc', v_pphh, t2)
+    return - 0.5 * contract('cdkl, bdkl -> bc', np.conj(v_pphh), t2)
 
 def dgram_cdkl_cdjl(v_pphh, t2):
     """
@@ -523,7 +529,7 @@ def dgram_cdkl_cdjl(v_pphh, t2):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - 0.5 * contract('cdkl, cdjl -> kj', v_pphh, t2)
+    return - 0.5 * contract('cdkl, cdjl -> kj', np.conj(v_pphh), t2)
 
 def dgram_ck_bk(f_ph, t1):
     """
@@ -536,7 +542,7 @@ def dgram_ck_bk(f_ph, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - contract('ck, bk -> bc', f_ph, t1)
+    return - contract('ck, bk -> bc', np.conj(f_ph), t1)
 
 def dgram_ck_cj(f_ph, t1):
     """
@@ -549,7 +555,7 @@ def dgram_ck_cj(f_ph, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - contract('ck, cj -> kj', f_ph, t1)
+    return - contract('ck, cj -> kj', np.conj(f_ph), t1)
 
 def dgram_cdlk_cl_dj(v_pphh, t1):
     """
@@ -562,7 +568,7 @@ def dgram_cdlk_cl_dj(v_pphh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - contract('cdlk, cl, dj -> kj', v_pphh, t1, t1, optimize="greedy")
+    return - contract('cdlk, cl, dj -> kj', np.conj(v_pphh), t1, t1, optimize="greedy")
 
 def dgram_cdlk_dk_bl(v_pphh, t1):
     """
@@ -575,4 +581,4 @@ def dgram_cdlk_dk_bl(v_pphh, t1):
     :return:        result of the contraction
     :rtype:         numpy array
     """
-    return - contract('cdlk, dk, bl -> bc', v_pphh, t1, t1, optimize="greedy")
+    return - contract('cdlk, dk, bl -> bc', np.conj(v_pphh), t1, t1, optimize="greedy")

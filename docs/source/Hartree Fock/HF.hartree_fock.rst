@@ -12,6 +12,7 @@
       HF_iter
       contract_2nf
       contract_3nf
+      contract_3nf_sparse
       get_1body_matrix
       init_density
       make_HF_ham

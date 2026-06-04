@@ -17,7 +17,7 @@ import NuLattice.CCM.three_body_utils as tbu
 import NuLattice.lattice as lat
 import NuLattice.CCM.ccDgrams as dgrams
 
-def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
+def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh, dtype=None):
     """
     constructs fock matrices from one-body interaction and rank-4 tensors of two-body force
 
@@ -33,10 +33,11 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     :type v_phhh:   numpy array
     :param v_hhhh:  two body interaction matrix V^{ij}_{kl}
     :type v_hhhh:   numpy array
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:    Fock matrices f_pp, f_ph, f_hh
     :rtype:     numpy array, numpy array, numpy array
     """
-    # Load kinetic energy into dictionary for fast lookup
     lookup1b = {}
     for ele in myTkin:
         [p, q, val] = ele
@@ -47,11 +48,11 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
     pnum=len(part)
     hnum=len(hole)
     
-    f_pp = np.zeros((pnum,pnum))
-    f_ph = np.zeros((pnum,hnum))
-    f_hh = np.zeros((hnum,hnum))
+    f_pp = np.zeros((pnum,pnum),dtype=dtype)
+    f_ph = np.zeros((pnum,hnum),dtype=dtype)
+    f_hh = np.zeros((hnum,hnum),dtype=dtype)
 
-    # Build particle-particle fock matrix
+
     for a in range(pnum):
         ka=part[a]
         for b in range(pnum):
@@ -95,7 +96,7 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh):
             
     return f_pp, f_ph, f_hh
 
-def get_all_interactions(part,hole,mycontact, sparse = False):
+def get_all_interactions(part,hole,mycontact, sparse = False, dtype = None):
     """
     This routine takes the relatively small number of two-body matrix elements in mycontact
     and sorts them into the four-indexed interaction tensors. It also anti-symmetrizes the latter
@@ -109,33 +110,31 @@ def get_all_interactions(part,hole,mycontact, sparse = False):
     :type mycontact:    list[(int, int, int, int, float)]
     :param sparse:      Optional; whether or not v_pppp and v_ppph should be stored as sparse arrays or not
     :type sparse:       bool
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:    Two body matrices v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh as rank-four tensors.  
     :rtype:     numpy array | sparse array, numpy array | sparse array, numpy array, numpy array, numpy array, numpy array
     """
     pnum=len(part)
     hnum=len(hole)
-    
     # Lookup from general index to hole index
     vals     = range(hnum)
     lookup_h = dict(zip(hole,vals))
-
     # Lookup from general index to particle index
     vals     = range(pnum)
     lookup_p = dict(zip(part,vals))
-
     # Handle pppp and ppph blocks differently if we are doing a sparse calculation
     if sparse:
         v_pppp = []
         v_ppph = []
     else:
-        v_pppp = np.zeros((pnum,pnum,pnum,pnum))
-        v_ppph = np.zeros((pnum,pnum,pnum,hnum))
+        v_pppp = np.zeros((pnum,pnum,pnum,pnum),dtype=dtype)
+        v_ppph = np.zeros((pnum,pnum,pnum,hnum),dtype=dtype)
 
-    v_pphh=np.zeros((pnum,pnum,hnum,hnum))
-    v_phph=np.zeros((pnum,hnum,pnum,hnum))
-    v_phhh=np.zeros((pnum,hnum,hnum,hnum))
-    v_hhhh=np.zeros((hnum,hnum,hnum,hnum))
-
+    v_pphh=np.zeros((pnum,pnum,hnum,hnum),dtype=dtype)
+    v_phph=np.zeros((pnum,hnum,pnum,hnum),dtype=dtype)
+    v_phhh=np.zeros((pnum,hnum,hnum,hnum),dtype=dtype)
+    v_hhhh=np.zeros((hnum,hnum,hnum,hnum),dtype=dtype)
     # Loop to populate v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh
     # from mycontact
     #
@@ -280,11 +279,11 @@ def ccsd_energy(f_ph, v_pphh, t2, t1):
     :return:        CCSD correlation energy
     :rtype:         float
     """
-    erg = ( contract( 'ai,ai', f_ph, t1 )
-           + contract( 'abij,abij', v_pphh, t2 )*0.25
-           + contract( 'abij,ai,bj', v_pphh, t1, t1, optimize='greedy' )*0.5
+    erg = ( contract( 'ai,ai', np.conj(f_ph), t1 )
+           + contract( 'abij,abij', np.conj(v_pphh), t2 )*0.25
+           + contract( 'abij,ai,bj', np.conj(v_pphh), t1, t1, optimize='greedy' )*0.5
             )
-    return erg
+    return np.real_if_close(erg)
 
 def get_ref_energy(no_1b_hh, no_2b_hhhh, w_hhh_hhh=None):
     """
@@ -315,7 +314,7 @@ def get_ref_energy(no_1b_hh, no_2b_hhhh, w_hhh_hhh=None):
             [m, i, j, n, k, l, val] = ele
             if (m, i, j) == (n, k, l):
                 en  += val / 6.0
-    return en   
+    return np.real_if_close(en)
 
 def t1Init(f_ph, f_pp, f_hh, delta):
     """
@@ -341,7 +340,7 @@ def t1Init(f_ph, f_pp, f_hh, delta):
     return f_ph / denom
 
 def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, sparse = True):
+           v_ppph_results, sparse = True, dtype = None):
     """
     iterating t1 using the CCSD equations
 
@@ -366,6 +365,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     :type v_ppph_results:   numpy array | list[numpy array]
     :param sparse:  whether or not v_pppp and v_ppph are stored as sparse arrays or not
     :type sparse:   bool    
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:     updated t_i^a
     :rtype:     numpy array
     """
@@ -384,8 +385,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     pnum = len(f_pp)
     hnum = len(f_hh)
 
-    X_hh = np.zeros((hnum, hnum))
-    X_pp = np.zeros((pnum, pnum))
+    X_hh = np.zeros((hnum, hnum),dtype=dtype)
+    X_pp = np.zeros((pnum, pnum),dtype=dtype)
     
     X_hh -= f_hh #2
     X_pp += f_pp #3
@@ -404,8 +405,8 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
         H1 += v_ppph_results[0]
         X_pp += v_ppph_results[1]
     else:
-        H1 += - 0.5 * contract('cdak, cdki -> ai', v_ppph_results, t2)#6
-        X_pp -= contract('cdak, ck -> ad', v_ppph_results, t1) #10
+        H1 += - 0.5 * contract('cdak, cdki -> ai', np.conj(v_ppph_results), t2)#6
+        X_pp -= contract('cdak, ck -> ad', np.conj(v_ppph_results), t1) #10
     
     H1  += contract('ac, ci -> ai', X_pp, t1) + contract('ki, ak -> ai', X_hh, t1)
 
@@ -443,7 +444,7 @@ def t2Init(f_pp, f_hh, v_pphh, delta):
 
 
 def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh, 
-           v_ppph_results, v_hhhh, sparse = True):
+           v_ppph_results, v_hhhh, sparse = True, dtype = None):
     """
     iterating t2, factoring out terms that look like g_i^i and g_a^a
 
@@ -472,6 +473,8 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     :type v_hhhh:   numpy array
     :param sparse:  whether or not v_pppp and v_ppph are stored as sparse arrays or not
     :type sparse:   bool    
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:     updated t_ij^ab
     :rtype:     numpy array
     """
@@ -501,8 +504,8 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     pnum = len(f_pp)
     hnum = len(f_hh)
 
-    X_hh = np.zeros((hnum, hnum))
-    X_pp = np.zeros((pnum, pnum))
+    X_hh = np.zeros((hnum, hnum),dtype=dtype)
+    X_pp = np.zeros((pnum, pnum),dtype=dtype)
     #factoring out all of the X_a^a and X_i^i terms
     #note that I am again calculating -X_i^i here like for t1
     X_hh -= f_hh
@@ -524,15 +527,15 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
         H2 += dgrams.dgram_bijk_ak1(v_ppph_results[5], t1)
         H2 += dgrams.dgram_bijk_ak2(v_ppph_results[6], t1)
 
-        dgram_abcd_cdij, dgram_abcd_ci_dj = dgrams.v_pppp_dgrams(v_pppp, t1, t2)
+        dgram_abcd_cdij, dgram_abcd_ci_dj = dgrams.v_pppp_dgrams(v_pppp, t1, t2, dtype=dtype)
         H2 += 0.5 * dgram_abcd_cdij
         H2 += 0.5 * dgrams.pIJ(dgram_abcd_ci_dj)
     else:
         H2 += dgrams.pIJ(contract('abcj, ci -> abij', v_ppph_results, t1))
-        H2 += - dgrams.pAB(contract('cdak, ck, dbij -> abij', v_ppph_results, t1, t2, optimize="greedy"))
-        H2 += dgrams.pIJ(dgrams.pAB(contract('dcak, di, bcjk -> abij', v_ppph_results, t1, t2, optimize="greedy")))
-        H2 += 0.5 * dgrams.pAB(contract('cdbk, ak, cdij -> abij', v_ppph_results, t1, t2, optimize="greedy"))
-        H2 += 0.5 * dgrams.pIJ(dgrams.pAB(contract('cdbk, ci, ak, dj -> abij', v_ppph_results, t1, t1, t1, optimize="greedy")))
+        H2 += - dgrams.pAB(contract('cdak, ck, dbij -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy"))
+        H2 += dgrams.pIJ(dgrams.pAB(contract('dcak, di, bcjk -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy")))
+        H2 += 0.5 * dgrams.pAB(contract('cdbk, ak, cdij -> abij', np.conj(v_ppph_results), t1, t2, optimize="greedy"))
+        H2 += 0.5 * dgrams.pIJ(dgrams.pAB(contract('cdbk, ci, ak, dj -> abij', np.conj(v_ppph_results), t1, t1, t1, optimize="greedy")))
         H2 += 0.5 * contract('abcd, cdij -> abij', v_pppp, t2)
         H2 += 0.5 * dgrams.pIJ(contract('abcd, ci, dj -> abij', v_pppp, t1, t1, optimize="greedy"))
 
@@ -549,7 +552,7 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     return t2
 
 def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 1000, max_diis = 10, 
-                delta = 0, mixing = 0.5, verbose = False, sparse = True, ccs = False): 
+                delta = 0, mixing = 0.5, verbose = False, sparse = True, ccs = False, dtype = None): 
     """
     Solves for the correlation energy of a system using the CCSD equations.
     DIIS credit to Daniel G. A. Smith and Lori A. Burns, and The Psi4NumPy Developers, https://github.com/psi4/psi4numpy
@@ -575,12 +578,13 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     :type sparse:   bool
     :param ccs:     Optional; whether to perform just the ccs equations or not
     :type ccs:      bool
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :returns:   correlation energy, t1, and t2
     :rtype:     float, numpy array, numpy array
     """
     f_pp, f_ph, f_hh = fock_mats
     v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = two_body_int
-
     # Initialize T1 and T2 to perturbative guess if not yet initialized
     if t1initial is None:
         t1 = t1Init(f_ph, f_pp, f_hh, delta)
@@ -600,35 +604,30 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     
     if verbose:
         print(f'Step {0}: {prevEnergy}')
-
+    # min_err =np.sqrt(eps)
     #iterate
     for i in range(maxSteps):
         oldT1 = deepcopy(t1)
         oldT2 = deepcopy(t2)
-                
         # If we are doing sparse calculations, we have factorized out the diagrams 
         # that contract v_ppph with t1 and t2 to intermediates.
         # Otherwise, we let opt_einsum do the factorization automatically.
         if sparse:
-            v_ppph_results = dgrams.v_ppph_dgrams(v_ppph, t1, t2)
+            v_ppph_results = dgrams.v_ppph_dgrams(v_ppph, t1, t2, dtype= dtype)
         else:
             v_ppph_results = v_ppph
-
-        # Iterate T1 and T2 
+        # Iterate T1 and T2
         t1 = mixing * t1 + (1. - mixing) * t1Iter(t1, t2, f_ph, f_pp, f_hh,
                                                   v_phph, v_phhh, v_pphh, v_ppph_results,
-                                                  sparse=sparse)
+                                                  sparse=sparse, dtype=dtype)
         if not ccs:
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
                                                       v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
-                                                      sparse=sparse)
-
+                                                      sparse=sparse,dtype=dtype)
         # Compute new CCSD energy
-        energy = ccsd_energy(f_ph,v_pphh, t2, t1)
-
+        energy = ccsd_energy(f_ph,v_pphh, t2, t1)        
         if verbose:
             print(f'Step {i+1}: {energy}', "difference =", abs(energy - prevEnergy) / abs(energy))
-
         # Check if we are done
         if (energy == 0 and prevEnergy == 0) or abs(energy - prevEnergy) / abs(energy) < eps:
             if verbose:
@@ -636,12 +635,14 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             return energy, t1, t2
         
         # Handle convergence acceleration via DIIS
-        diis_vals_t1.append(deepcopy(t1))
-        diis_vals_t2.append(deepcopy(t2))
-
         error_t1 = (t1 - oldT1).ravel()
         error_t2 = (t2 - oldT2).ravel()
-        diis_errors.append(np.concatenate((error_t1, error_t2)))
+        error = np.concatenate((error_t1, error_t2))
+
+        if max_diis > 0:
+            diis_errors.append(error)
+            diis_vals_t1.append(deepcopy(t1))
+            diis_vals_t2.append(deepcopy(t2))
         if max_diis > 0 and len(diis_errors) == max_diis:
             diis_size = len(diis_vals_t1)
             del diis_vals_t1[0]
@@ -649,17 +650,17 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             del diis_errors[0]
                 
             diis_size -= 1
-            B = -1 * np.ones((diis_size, diis_size))
+            B = -1 * np.ones((diis_size, diis_size),dtype=dtype)
             B[-1, -1] = 0
 
             for n1, e1 in enumerate(diis_errors):
                 for n2, e2 in enumerate(diis_errors):
                     # Vectordot the error vectors
-                    B[n1, n2] = np.dot(e1, e2)
+                    B[n1, n2] = np.vdot(e1, e2)
 
             B[:-1, :-1] /= np.abs(B[:-1, :-1]).max()
 
-            resid = np.zeros(diis_size)
+            resid = np.zeros(diis_size,dtype=dtype)
             resid[-1] = -1
 
             ci = np.linalg.solve(B, resid)
@@ -675,12 +676,12 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             diis_vals_t2 = [deepcopy(t2)]
             diis_errors = []
         
-        # Catch if the iterations are going off to infinity
+        #Catch if the iterations are going off to infinity
         if abs(energy) > 1.e+10:
             print('Iteration Diverged')
             break
 
-        # Catch if there is a divide by 0 error or similar
+        #Catch if there is a divide by 0 error or similar
         if np.isnan(energy):
             print('nan error')
             break
@@ -749,7 +750,7 @@ def get_norm_ord_int(thisL, holes, vT1, vS1, str_3NF = 0, sparse = True):
 
     return vacEn, fock_mats, two_body_int
 
-def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=True, NO2B = True):
+def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=True, NO2B = True, dtype = None):
     """
     Takes all the necessary parameters to generate the fock matrices, two and three body interactions to perform CCM
     
@@ -768,6 +769,8 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
     :param NO2B:      whether or not to apply the normal-order two-body approximation, i.e. to return None
                       for the three body interaction
     :type NO2B:       bool
+    :param dtype:   Optional; dtype of numpy arrays
+    :type dtype:    dtype
     :return:        The reference energy and three lists, a list of the three fock matrices in the order [f_pp, f_ph, f_hh], 
                     all of the two body interactions in the order [v_pppp, v_ppph, v_pphh, v_phph, 
                     v_phhh, v_hhhh], and all of the three body interactions in the order [w_ppp_pph, 
@@ -779,17 +782,16 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
     hnum = len(hole)
     pnum = len(part)
 
-    v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = get_all_interactions(part,hole,mycontact,sparse)
+    v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = get_all_interactions(part,hole,mycontact,sparse, dtype=dtype)
     
-    f_pp, f_ph, f_hh = get_fock_matrices(part, hole, myTkin,v_phph, v_phhh, v_hhhh)
-
+    f_pp, f_ph, f_hh = get_fock_matrices(part, hole, myTkin,v_phph, v_phhh, v_hhhh, dtype=dtype)
+    
     three_body_int = None
     #getting the 3 body interactions if needed and adding the effective contribution to the fock matrices and two body interactions
     if my3body is not None:
         w_ppp_pph, w_ppp_phh, w_pph_pph, \
         w_ppp_hhh, w_pph_phh, w_pph_hhh, \
         w_phh_phh, w_phh_hhh, w_hhh_hhh = tbu.get_3NF(part, hole, my3body)
-
         # Include three-body contribution to Fock matrix
         dum_fpp, dum_fph, dum_fhh = tbu.get_3NF_fock(hnum, pnum, w_phh_phh, w_phh_hhh, w_hhh_hhh)
         

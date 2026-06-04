@@ -9,3 +9,4 @@ API
     hf
     ccm
     imsrg
+    operators

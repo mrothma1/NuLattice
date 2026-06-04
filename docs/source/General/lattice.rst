@@ -13,6 +13,7 @@
       contacts
       get_lattice
       get_sp_basis
+      index2state
       left
       makeState
       p_x

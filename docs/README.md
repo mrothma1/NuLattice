@@ -1,6 +1,6 @@
 If you want to build the documentation, install sphinx using the following command:
 ```    
-pip install sphinx
+pip install sphinx pydata-sphinx-theme
 ```
 and build the docs with 
 ```

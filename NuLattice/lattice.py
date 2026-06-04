@@ -75,6 +75,29 @@ def state2index(state, myL, spin=2, isospin=2):
     index = i*myL**2*isospin*spin + j*myL*isospin*spin + k*isospin*spin + tz*spin + sz
     return index
 
+def index2state(ind, myL, spin=2, isospin=2):
+    """
+    given an index of a state in the lattice, return a state list
+    [i, j, k, tz, sz]
+
+    :param ind:     index of the state
+    :type ind:      int
+    :param myL:     number of lattice sites in each direction
+    :type myL:      int
+    :param spin:    Optional; number of spin degrees of freedom
+    :type spin:     int
+    :param isospin: Optional; number of isospin degrees of freedom
+    :type isospin:  int
+    :return:        state as a list [i,j,k,tz,sz]
+    :rtype:         list[(int, int, int, int, int)]
+    """
+    sz = ind % spin
+    tz = ((ind - sz) // spin) % isospin
+    site = (ind - sz - tz * spin) // (spin * isospin)
+    k = site % myL
+    j = ((site - k) // myL) % myL
+    i = (((site - k) // myL) - j) // myL
+    return [i, j, k, tz, sz]
 
 def get_lattice(myL):
     """
