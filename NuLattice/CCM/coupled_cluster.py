@@ -66,7 +66,7 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh, dtype=None):
 
             f_pp[a,b] = f_pp[a,b] + np.sum( [ v_phph[a,i,b,i] for i in range(hnum) ] )
                    
-
+    # Build particle-hole fock matrix
     for a in range(pnum):
         ka=part[a]
         for b in range(hnum):
@@ -80,7 +80,7 @@ def get_fock_matrices(part,hole,myTkin,v_phph,v_phhh,v_hhhh, dtype=None):
 
             f_ph[a,b] = f_ph[a,b] + np.sum( [ v_phhh[a,i,b,i] for i in range(hnum) ] )       
         
-
+    # Build hole-hole fock matrix
     for a in range(hnum):
         ka=hole[a]
         for b in range(hnum):
@@ -117,12 +117,13 @@ def get_all_interactions(part,hole,mycontact, sparse = False, dtype = None):
     """
     pnum=len(part)
     hnum=len(hole)
-    
+    # Lookup from general index to hole index
     vals     = range(hnum)
     lookup_h = dict(zip(hole,vals))
-
+    # Lookup from general index to particle index
     vals     = range(pnum)
     lookup_p = dict(zip(part,vals))
+    # Handle pppp and ppph blocks differently if we are doing a sparse calculation
     if sparse:
         v_pppp = []
         v_ppph = []
@@ -134,6 +135,17 @@ def get_all_interactions(part,hole,mycontact, sparse = False, dtype = None):
     v_phph=np.zeros((pnum,hnum,pnum,hnum),dtype=dtype)
     v_phhh=np.zeros((pnum,hnum,hnum,hnum),dtype=dtype)
     v_hhhh=np.zeros((hnum,hnum,hnum,hnum),dtype=dtype)
+    # Loop to populate v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh
+    # from mycontact
+    #
+    # We execute the following steps:
+    # 1) identify which block we are in
+    # 2) permute hole/particles in bra/ket to get to the right block above
+    # 3) we then assemble all antisymmetric permutations
+    # 4) we finally write the matrix element to the appropriate block, either dense or sparse
+    #
+    # This approach works with the p<q, r<s storage of mycontact
+    # and prevents double counting matrix elements in the final tensors
     for [i1,i2,i3,i4, val] in mycontact:
         currSparse = False
         # note: i1<i2 and i3<i4 is stored only in mycontact
@@ -222,10 +234,6 @@ def get_all_interactions(part,hole,mycontact, sparse = False, dtype = None):
         elif ket == ("p","h"):
             if bra == ("p","p"):
                 vint = None
-#                indices= ((c,d,a,b),(d,c,a,b))
-#                signs  = (1.0,-1.0)
-#                vint = v_ppph
-#                currSparse = sparse
             else:
                 if bra == ("p","h"): 
                     vint = v_phph
@@ -242,14 +250,6 @@ def get_all_interactions(part,hole,mycontact, sparse = False, dtype = None):
                 vint = v_hhhh
             else:
                 vint = None
-#                if bra == ("p","h"): 
-#                    vint = v_phhh
-#                    indices= ((c,d,a,b),(c,d,b,a))
-#                    signs  = (1.0,-1.0)
-#                elif bra == ("p","p"): 
-#                    vint = v_pphh
-#                    indices= ((c,d,a,b),(c,d,b,a),(d,c,a,b),(d,c,b,a))
-#                    signs  = (1.0,-1.0,-1.0,1.0)
 
         if vint is not None:
             for i, indx in enumerate(indices):
@@ -301,6 +301,9 @@ def get_ref_energy(no_1b_hh, no_2b_hhhh, w_hhh_hhh=None):
     """
     en = 0.0
     hnum = len(no_1b_hh)
+    # Because no_1b_hh and no_2b_hh are already normal ordered,
+    # we use modified expressions to compute the reference state energy
+    # [see, e.g., Frosini et al. EPJA 57 (2021)]
     for i in range(hnum):
         en+= no_1b_hh[(i,i)]
         for j in range(hnum):
@@ -330,6 +333,9 @@ def t1Init(f_ph, f_pp, f_hh, delta):
     """
     diag_h = np.diag(f_hh)
     diag_p =  - np.diag(f_pp)
+    # Build energy differences diff_ph = -1 * e_p + e_h + delta
+    # where the delta (usually 0) can be used to protect against
+    # nearly degenerate hole vs. particle energies
     denom  = np.add.outer(diag_p, diag_h) + delta
     return f_ph / denom
 
@@ -386,6 +392,7 @@ def t1Iter(t1, t2, f_ph, f_pp, f_hh, v_phph, v_phhh, v_pphh,
     X_pp += f_pp #3
     
     # #if factoring, add all of the relavent terms to X_i^i and X_a^a
+    # We "dress" the Fock matrix with additional contributions from CC diagrams
     X_hh += dgrams.dgram_ck_ci(f_ph, t1) #8
     X_pp += dgrams.dgram_ck_ak(f_ph, t1) #8
     X_hh += dgrams.dgram_bijk_bj(v_phhh, t1) #9
@@ -429,6 +436,9 @@ def t2Init(f_pp, f_hh, v_pphh, delta):
     diag_p = np.diag(f_pp)
     denom_hh = np.add.outer(diag_h, diag_h)
     denom_pp = - np.add.outer(diag_p, diag_p)
+    # Build energy differences diff_pphh = -1 * (e_p + e_p') + e_h + e_h' + delta
+    # where the delta (usually 0) can be used to protect against
+    # nearly degenerate hole vs. particle energies
     denom = np.add.outer(denom_pp, denom_hh) + delta    
     return v_pphh / denom
 
@@ -502,6 +512,7 @@ def t2Iter(t1, t2, f_ph, f_hh, f_pp, v_pppp, v_phph, v_phhh, v_pphh,
     X_pp += f_pp
 
     #adding up everything that goes in the factored terms
+    # We "dress" the Fock matrix with additional contributions from CC diagrams
     X_pp += dgrams.dgram_cdkl_bdkl(v_pphh, t2)
     X_hh += dgrams.dgram_cdkl_cdjl(v_pphh, t2)
     X_pp += dgrams.dgram_ck_bk(f_ph, t1) 
@@ -574,6 +585,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     """
     f_pp, f_ph, f_hh = fock_mats
     v_pppp, v_ppph, v_pphh, v_phph, v_phhh, v_hhhh = two_body_int
+    # Initialize T1 and T2 to perturbative guess if not yet initialized
     if t1initial is None:
         t1 = t1Init(f_ph, f_pp, f_hh, delta)
     else:
@@ -597,11 +609,14 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
     for i in range(maxSteps):
         oldT1 = deepcopy(t1)
         oldT2 = deepcopy(t2)
-                
+        # If we are doing sparse calculations, we have factorized out the diagrams 
+        # that contract v_ppph with t1 and t2 to intermediates.
+        # Otherwise, we let opt_einsum do the factorization automatically.
         if sparse:
             v_ppph_results = dgrams.v_ppph_dgrams(v_ppph, t1, t2, dtype= dtype)
         else:
             v_ppph_results = v_ppph
+        # Iterate T1 and T2
         t1 = mixing * t1 + (1. - mixing) * t1Iter(t1, t2, f_ph, f_pp, f_hh,
                                                   v_phph, v_phhh, v_pphh, v_ppph_results,
                                                   sparse=sparse, dtype=dtype)
@@ -609,25 +624,20 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             t2 = mixing * t2 + (1. - mixing) * t2Iter(oldT1, t2, f_ph, f_hh, f_pp,
                                                       v_pppp, v_phph, v_phhh, v_pphh, v_ppph_results, v_hhhh,
                                                       sparse=sparse,dtype=dtype)
-
-        energy = ccsd_energy(f_ph,v_pphh, t2, t1)
-
+        # Compute new CCSD energy
+        energy = ccsd_energy(f_ph,v_pphh, t2, t1)        
         if verbose:
             print(f'Step {i+1}: {energy}', "difference =", abs(energy - prevEnergy) / abs(energy))
-
+        # Check if we are done
         if (energy == 0 and prevEnergy == 0) or abs(energy - prevEnergy) / abs(energy) < eps:
             if verbose:
                 print(f'Energy found in {i+1} iterations')
             return energy, t1, t2
         
+        # Handle convergence acceleration via DIIS
         error_t1 = (t1 - oldT1).ravel()
         error_t2 = (t2 - oldT2).ravel()
         error = np.concatenate((error_t1, error_t2))
-        # rel_err =  error / (np.concatenate((t1.ravel(), t2.ravel())) + 1e-15)
-        # if np.max(rel_err) < min_err:
-        #     if verbose:
-        #         print(f'Energy found in {i+1} iterations')
-        #     return energy, t1, t2
 
         if max_diis > 0:
             diis_errors.append(error)
@@ -666,7 +676,7 @@ def ccsd_solver(fock_mats, two_body_int, t1initial=None, eps = 1e-8, maxSteps = 
             diis_vals_t2 = [deepcopy(t2)]
             diis_errors = []
         
-        #Catch it the iterations are going off to infinity
+        #Catch if the iterations are going off to infinity
         if abs(energy) > 1.e+10:
             print('Iteration Diverged')
             break
@@ -782,14 +792,14 @@ def get_norm_ordered_ham(thisL, holes, myTkin, mycontact, my3body=None, sparse=T
         w_ppp_pph, w_ppp_phh, w_pph_pph, \
         w_ppp_hhh, w_pph_phh, w_pph_hhh, \
         w_phh_phh, w_phh_hhh, w_hhh_hhh = tbu.get_3NF(part, hole, my3body)
-
+        # Include three-body contribution to Fock matrix
         dum_fpp, dum_fph, dum_fhh = tbu.get_3NF_fock(hnum, pnum, w_phh_phh, w_phh_hhh, w_hhh_hhh)
         
         f_pp += dum_fpp 
         f_ph += dum_fph
         f_hh += dum_fhh
         
-
+        # Include three-body contribution to NO2B matrix elements
         dum_two_body = tbu.get_3NF_tbme(w_pph_pph, w_pph_phh, w_pph_hhh, 
                                         w_phh_phh, w_phh_hhh, w_hhh_hhh, 
                                         pnum, hnum, sparse)

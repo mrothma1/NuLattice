@@ -1,0 +1,7 @@
+numpy
+scipy
+matplotlib
+opt-einsum
+jupyter
+sphinx 
+pydata-sphinx-theme

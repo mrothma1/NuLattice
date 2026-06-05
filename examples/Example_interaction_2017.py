@@ -4,9 +4,12 @@ import NuLattice.operators.one_body_operators as obops
 import NuLattice.operators.two_body_operators as tbops
 import NuLattice.lattice as lat
 import NuLattice.constants_NLEFT as nleftConsts
+import NuLattice.HF.hartree_fock as hf
+import NuLattice.references as ref
 if __name__ == '__main__':
     thisL = 4
     a = 1.0 / 100.0
+    my_basis = lat.get_sp_basis(thisL)
     lattice = lat.get_lattice(thisL)
 
     myTkin=obops.tKin(thisL, 3, a,mass=nleftConsts.mass)
@@ -21,5 +24,25 @@ if __name__ == '__main__':
 
     v_0=tbops.shortRangeV_2body(lattice, thisL, sL, sNL, c0, verbose=verbose)
 
-    mycontact = tbops.sparse_to_list_2body(v_0+v_OPE, thisL)
-    print("number of matrix elements from two-body contacts", len(mycontact))
+    my_VNN = tbops.sparse_to_list_2body(v_0+v_OPE, thisL)
+    print("number of two-body matrix elements", len(my_VNN))
+
+    # We compute oxygen-16
+    my_ref = ref.ref_16O_gs
+    hole = ref.reference_to_holes(my_ref,my_basis)
+    hnum = len(hole)
+
+    # Density must be defined as complex because Hamiltonian is complex Hermitian
+    dens = hf.init_density(len(my_basis),hole,dtype=complex)
+
+    eps=1.e-8
+    mix = 0.7
+    max_iter=100
+    verbose = True
+    erg, trafo, conv = hf.solve_HF(myTkin, my_VNN, [], dens,
+                                mix=mix, eps=eps, max_iter=max_iter, verbose=verbose)
+
+    if conv:
+        print("HF energy (MeV) = ", erg)
+    else:
+        print("HF did not converge")
