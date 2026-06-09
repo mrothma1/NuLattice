@@ -3,10 +3,11 @@
 `NuLattice` is a set of Python programs (full configuration interaction,
 coupled cluster method, Hartree Fock, in-medium similarity
 renormalization group) for computations of atomic nuclei on spatial
-lattices with periodic boundary conditions. At present, the available
-Hamiltonians are based on pionless effective field theory and consist
-of the kinetic energy, an on-site (SU4 symmetric) two-body contact,
-and an on-site three-body contact.
+lattices with periodic boundary conditions. At present, multiple
+Hamiltonians are available:
+Hamiltonians with zero-range two- and three-body interactions from leading order pionless effective field theory;
+Hamiltonians with smeared two-body contact interactions and the one-pion-exchange potential from leading order chiral effective field theory;
+and Hamiltonians with smeared two- and three-body contact interactions from leading order pionless effective field theory.
 
 A list of publications using `NuLattice` is available at [Publications](PUBLICATIONS.md).
 
