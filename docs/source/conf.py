@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath("../../NuLattice"))
 project = 'NuLattice'
 copyright = '2026, M. Rothman, B. Johnson-Toth, G. Hagen, M. Heinz, T. Papenbrock'
 author = 'M. Rothman, B. Johnson-Toth, G. Hagen, M. Heinz, T. Papenbrock'
-release = '1.1'
+release = '1.2'
 
 extensions = [
    'sphinx.ext.duration',
