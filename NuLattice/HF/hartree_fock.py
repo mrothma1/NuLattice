@@ -26,7 +26,7 @@ def get_1body_matrix(myTkin,nstat,dtype=float):
     """
     op1 = np.zeros((nstat,nstat),dtype=dtype)
     for [a, b, val] in myTkin:
-        op1[a,b]=val
+        op1[a,b]+=val
     return op1
 
 def contract_2nf(v2,dens):
