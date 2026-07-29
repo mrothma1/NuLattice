@@ -2,7 +2,7 @@
 
 So far 3 publications (that we know of) have used `NuLattice`. Please let us know if you have used `NuLattice` in a publication and we have not yet listed it here.
 
-## 1. Chenyi Gu, Matthias Heinz, Oriel Kiss, Thomas Papenbrock, "Toward scalable quantum computations of atomic nuclei," [arXiv:2507.14690](https://arxiv.org/abs/2507.14690)
+## 1. Chenyi Gu, Matthias Heinz, Oriel Kiss, Thomas Papenbrock, "Toward scalable quantum computations of atomic nuclei," [Phys. Rev. C **113**, 034321 (2026)](https://doi.org/10.1103/gqdy-dvps), [arXiv:2507.14690](https://arxiv.org/abs/2507.14690)
 
 Main message: The sparsity of nuclear Hamiltonians on a position-space lattice basis makes them amenable to quantum computing. Combining this and second quantization allows for quantum computations to scale favorably and have the potential to solve problems that would not be possible using classical computations.
 
